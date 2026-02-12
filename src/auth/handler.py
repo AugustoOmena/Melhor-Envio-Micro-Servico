@@ -18,6 +18,7 @@ from shared.melhor_envio import load_config
 from shared.melhor_envio_oauth import MelhorEnvioOAuthClient
 from shared.supabase import SupabaseConfig, SupabaseRestClient
 from shared.token_store import MelhorEnvioTokenStore, TokenStoreError
+import json
 
 logger = Logger(service="melhorenvio-auth")
 tracer = Tracer(service="melhorenvio-auth")
@@ -97,7 +98,12 @@ def authorize_url() -> Response:
     return Response(
         status_code=200,
         content_type="application/json",
-        body={"authorize_url": url, "state": state, "redirect_uri": redirect_uri, "scopes": scopes},
+        body=json.dumps({
+            "authorize_url": url, 
+            "state": state, 
+            "redirect_uri": redirect_uri, 
+            "scopes": scopes
+        }),
     )
 
 
