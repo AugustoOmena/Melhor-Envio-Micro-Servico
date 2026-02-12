@@ -37,14 +37,14 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Select Terraform workspace
+      - name: Choose workspace name
         run: |
           if [ "${GITHUB_REF_NAME}" = "main" ]; then
-            export TF_WORKSPACE="prod"
+            TF_WORKSPACE_NAME="prod"
           else
-            export TF_WORKSPACE="dev"
+            TF_WORKSPACE_NAME="dev"
           fi
-          echo "TF_WORKSPACE=${TF_WORKSPACE}" >> "${GITHUB_ENV}"
+          echo "TF_WORKSPACE_NAME=${TF_WORKSPACE_NAME}" >> "${GITHUB_ENV}"
 
       - name: Terraform init
         run: terraform init
@@ -55,8 +55,8 @@ jobs:
       - name: Terraform validate
         run: terraform validate
 
-      - name: Terraform workspace init
-        run: terraform workspace select "${TF_WORKSPACE}" || terraform workspace new "${TF_WORKSPACE}"
+      - name: Terraform workspace select
+        run: terraform workspace select -or-create "${TF_WORKSPACE_NAME}"
 
       - name: Terraform plan
         env:
