@@ -70,16 +70,12 @@ def integration_status() -> Response:
     return Response(
         status_code=200,
         content_type="application/json",
-        headers={
-            # ESTE BLOCO É O QUE FALTA:
-            "Access-Control-Allow-Origin": "https://dev.augustoomena.com",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "GET,OPTIONS"
+        body={
+            "connected": rec is not None,
+            "env": cfg.env,
+            "expires_at": rec.expires_at.isoformat() if rec and rec.expires_at else None,
+            "scope": rec.scope if rec else None,
         },
-        body=json.dumps({
-            "authorize_url": url, 
-            "state": state
-        }),
     )
 
 
@@ -117,14 +113,15 @@ def authorize_url() -> Response:
         status_code=200,
         content_type="application/json",
         headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type",
+            # ESTE BLOCO É O QUE FALTA:
+            "Access-Control-Allow-Origin": "https://dev.augustoomena.com",
+            "Access-Control-Allow-Headers": "Content-Type,Authorization",
             "Access-Control-Allow-Methods": "GET,OPTIONS"
         },
         body=json.dumps({
             "authorize_url": url, 
             "state": state
-        })
+        }),
     )
 
 @app.post("/integrations/melhorenvio/callback")
