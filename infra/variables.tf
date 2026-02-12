@@ -6,45 +6,37 @@ variable "aws_region" {
 
 variable "project_name" {
   type        = string
-  description = "Base name for resources."
-  default     = "me-microservice"
+  description = "Project prefix for resource naming."
+  default     = "melhorenvio-ms"
 }
 
-variable "melhor_envio_base_url" {
+variable "melhor_envio_env" {
   type        = string
-  description = "Melhor Envio base URL."
-  default     = "https://sandbox.melhorenvio.com.br"
+  description = "Melhor Envio environment: sandbox or production."
+  default     = "sandbox"
 }
 
 variable "melhor_envio_client_id" {
   type        = string
   description = "Melhor Envio OAuth client_id."
-  default     = ""
   sensitive   = true
 }
 
 variable "melhor_envio_client_secret" {
   type        = string
   description = "Melhor Envio OAuth client_secret."
-  default     = ""
   sensitive   = true
 }
 
-variable "melhor_envio_default_scope" {
-  type        = string
-  description = "Default scope used for authorize URL (optional)."
-  default     = ""
-}
-
-variable "http_timeout_seconds" {
+variable "lambda_timeout_seconds" {
   type        = number
-  description = "HTTP timeout for Melhor Envio requests."
-  default     = 15
+  description = "Lambda timeout in seconds."
+  default     = 20
 }
 
-variable "user_agent" {
-  type        = string
-  description = "User-Agent used on outbound requests."
-  default     = "me-microservice/1.0"
+variable "lambda_memory_mb" {
+  type        = number
+  description = "Lambda memory in MB."
+  default     = 256
 }
 

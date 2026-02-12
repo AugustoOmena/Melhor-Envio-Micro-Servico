@@ -1,10 +1,15 @@
 output "api_base_url" {
-  description = "Base URL for the HTTP API stage."
-  value       = aws_apigatewayv2_api.http.api_endpoint
+  description = "Base URL for the HTTP API."
+  value       = aws_apigatewayv2_api.http_api.api_endpoint
 }
 
-output "lambda_function_name" {
-  description = "Deployed Lambda function name."
-  value       = aws_lambda_function.api.function_name
+output "auth_token_url" {
+  description = "Auth token endpoint URL."
+  value       = "${aws_apigatewayv2_api.http_api.api_endpoint}/auth/token"
+}
+
+output "cart_url" {
+  description = "Cart insert endpoint URL."
+  value       = "${aws_apigatewayv2_api.http_api.api_endpoint}/cart"
 }
 

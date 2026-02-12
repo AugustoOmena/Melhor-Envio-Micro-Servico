@@ -2,20 +2,21 @@ name: deploy
 
 on:
   push:
-    branches: ["main", "develop"]
+    branches: ["main"]
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
 jobs:
-  terraform:
+  test-and-deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
-    defaults:
-      run:
-        working-directory: infra
-
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_aws_region: us-east-1
+      TF_VAR_melhor_envio_client_id: ${{ secrets.MELHOR_ENVIO_CLIENT_ID }}
+      TF_VAR_melhor_envio_client_secret: ${{ secrets.MELHOR_ENVIO_CLIENT_SECRET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,6 +25,17 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Install dependencies (test)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: pytest -q
+
+      - name: Build Lambda artifacts
+        run: ./scripts/build_lambdas.sh
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -37,38 +49,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Choose workspace name
-        run: |
-          if [ "${GITHUB_REF_NAME}" = "main" ]; then
-            TF_WORKSPACE_NAME="prod"
-          else
-            TF_WORKSPACE_NAME="dev"
-          fi
-          echo "TF_WORKSPACE_NAME=${TF_WORKSPACE_NAME}" >> "${GITHUB_ENV}"
-
       - name: Terraform init
-        run: terraform init
-
-      - name: Terraform fmt
-        run: terraform fmt -check
-
-      - name: Terraform validate
-        run: terraform validate
-
-      - name: Terraform workspace select
-        run: terraform workspace select -or-create "${TF_WORKSPACE_NAME}"
-
-      - name: Terraform plan
-        env:
-          TF_VAR_melhor_envio_client_id: ${{ secrets.MELHOR_ENVIO_CLIENT_ID }}
-          TF_VAR_melhor_envio_client_secret: ${{ secrets.MELHOR_ENVIO_CLIENT_SECRET }}
-          TF_VAR_melhor_envio_default_scope: ${{ secrets.MELHOR_ENVIO_DEFAULT_SCOPE }}
-        run: terraform plan -out=tfplan
+        working-directory: infra
+        run: terraform init -upgrade
 
       - name: Terraform apply
-        env:
-          TF_VAR_melhor_envio_client_id: ${{ secrets.MELHOR_ENVIO_CLIENT_ID }}
-          TF_VAR_melhor_envio_client_secret: ${{ secrets.MELHOR_ENVIO_CLIENT_SECRET }}
-          TF_VAR_melhor_envio_default_scope: ${{ secrets.MELHOR_ENVIO_DEFAULT_SCOPE }}
-        run: terraform apply -auto-approve tfplan
+        working-directory: infra
+        run: terraform apply -auto-approve
 
