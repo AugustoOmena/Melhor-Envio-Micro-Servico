@@ -154,7 +154,7 @@ resource "aws_apigatewayv2_route" "me_authorize_url" {
 
 resource "aws_apigatewayv2_route" "me_callback" {
   api_id    = aws_apigatewayv2_api.http_api.id
-  route_key = "POST /integrations/melhorenvio/callback"
+  route_key = "GET /integrations/melhorenvio/callback"
   target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
 }
 
