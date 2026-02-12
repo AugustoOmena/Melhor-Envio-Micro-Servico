@@ -28,6 +28,18 @@ variable "melhor_envio_client_secret" {
   sensitive   = true
 }
 
+variable "supabase_url" {
+  type        = string
+  description = "Supabase project URL (e.g., https://xxxx.supabase.co)."
+  sensitive   = true
+}
+
+variable "supabase_key" {
+  type        = string
+  description = "Supabase service role key used by the backend to persist tokens."
+  sensitive   = true
+}
+
 variable "lambda_timeout_seconds" {
   type        = number
   description = "Lambda timeout in seconds."

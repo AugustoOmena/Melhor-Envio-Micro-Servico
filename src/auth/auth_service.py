@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from auth_repository import AuthRepository
 from auth_schemas import TokenRequest
+from shared.melhor_envio_oauth import MelhorEnvioOAuthClient
 
 
 class AuthService:
-    def __init__(self, repo: AuthRepository, *, client_id: str, client_secret: str) -> None:
-        self._repo = repo
+    def __init__(self, oauth: MelhorEnvioOAuthClient, *, client_id: str, client_secret: str) -> None:
+        self._oauth = oauth
         self._client_id = client_id
         self._client_secret = client_secret
 
@@ -28,5 +28,5 @@ class AuthService:
         if req.grant_type == "refresh_token":
             payload["refresh_token"] = req.refresh_token or ""
 
-        return self._repo.request_token(payload)
+        return self._oauth.request_token(payload)
 

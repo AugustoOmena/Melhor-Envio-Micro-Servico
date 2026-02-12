@@ -1,4 +1,4 @@
-"""Repository responsible for calling Melhor Envio OAuth endpoints."""
+"""Melhor Envio OAuth operations shared across Lambdas."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ from shared.http import HttpClient, HttpClientError
 from shared.melhor_envio import MelhorEnvioConfig
 
 
-class AuthRepository:
+class MelhorEnvioOAuthClient:
     def __init__(self, http: HttpClient, config: MelhorEnvioConfig) -> None:
         self._http = http
         self._config = config
 
     def request_token(self, payload: dict[str, str]) -> dict[str, Any]:
-        data = urllib.parse.urlencode(payload).encode("utf-8")
+        data = urllib.parse.urlencode(payload, doseq=True).encode("utf-8")
         resp = self._http.request_json(
             "POST",
             self._config.token_url,

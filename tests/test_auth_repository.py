@@ -4,9 +4,9 @@ from typing import Any, Mapping
 
 import pytest
 
-from auth_repository import AuthRepository
 from shared.http import HttpClientError, HttpResponse
 from shared.melhor_envio import MelhorEnvioConfig
+from shared.melhor_envio_oauth import MelhorEnvioOAuthClient
 
 
 class _FakeHttp:
@@ -30,9 +30,9 @@ class _FakeHttp:
 def test_auth_repository_calls_token_url_and_form_content_type() -> None:
     cfg = MelhorEnvioConfig(env="sandbox", client_id="cid", client_secret="cs")
     http = _FakeHttp(HttpResponse(status_code=200, headers={}, body={"access_token": "t"}, raw_body='{"access_token":"t"}'))
-    repo = AuthRepository(http=http, config=cfg)
+    oauth = MelhorEnvioOAuthClient(http=http, config=cfg)
 
-    out = repo.request_token({"grant_type": "client_credentials", "client_id": "cid", "client_secret": "cs"})
+    out = oauth.request_token({"grant_type": "client_credentials", "client_id": "cid", "client_secret": "cs"})
 
     assert out["access_token"] == "t"
     assert http.last is not None
@@ -44,8 +44,8 @@ def test_auth_repository_calls_token_url_and_form_content_type() -> None:
 def test_auth_repository_raises_on_error_status() -> None:
     cfg = MelhorEnvioConfig(env="sandbox", client_id="cid", client_secret="cs")
     http = _FakeHttp(HttpResponse(status_code=401, headers={}, body={"message": "unauthorized"}, raw_body="unauthorized"))
-    repo = AuthRepository(http=http, config=cfg)
+    oauth = MelhorEnvioOAuthClient(http=http, config=cfg)
 
     with pytest.raises(HttpClientError):
-        repo.request_token({"grant_type": "client_credentials", "client_id": "cid", "client_secret": "cs"})
+        oauth.request_token({"grant_type": "client_credentials", "client_id": "cid", "client_secret": "cs"})
 

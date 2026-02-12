@@ -66,6 +66,8 @@ resource "aws_lambda_function" "auth" {
       MELHOR_ENVIO_ENV           = var.melhor_envio_env
       MELHOR_ENVIO_CLIENT_ID     = var.melhor_envio_client_id
       MELHOR_ENVIO_CLIENT_SECRET = var.melhor_envio_client_secret
+      SUPABASE_URL               = var.supabase_url
+      SUPABASE_KEY               = var.supabase_key
       HTTP_TIMEOUT_SECONDS       = "15"
     }
   }
@@ -89,8 +91,12 @@ resource "aws_lambda_function" "cart" {
 
   environment {
     variables = {
-      MELHOR_ENVIO_ENV     = var.melhor_envio_env
-      HTTP_TIMEOUT_SECONDS = "15"
+      MELHOR_ENVIO_ENV           = var.melhor_envio_env
+      MELHOR_ENVIO_CLIENT_ID     = var.melhor_envio_client_id
+      MELHOR_ENVIO_CLIENT_SECRET = var.melhor_envio_client_secret
+      SUPABASE_URL               = var.supabase_url
+      SUPABASE_KEY               = var.supabase_key
+      HTTP_TIMEOUT_SECONDS       = "15"
     }
   }
 
