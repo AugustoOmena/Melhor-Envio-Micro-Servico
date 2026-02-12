@@ -19,6 +19,7 @@ from shared.melhor_envio_oauth import MelhorEnvioOAuthClient
 from shared.supabase import SupabaseConfig, SupabaseRestClient
 from shared.token_store import MelhorEnvioTokenStore, TokenStoreError
 import json
+from aws_lambda_powertools.event_handler import Response
 
 logger = Logger(service="melhorenvio-auth")
 tracer = Tracer(service="melhorenvio-auth")
@@ -112,7 +113,7 @@ def authorize_url() -> Response:
         status_code=200,
         content_type="application/json",
         headers={
-            "Access-Control-Allow-Origin": "*", # Permite que qualquer origem leia (para teste)
+            "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Content-Type",
             "Access-Control-Allow-Methods": "GET,OPTIONS"
         },
@@ -121,7 +122,6 @@ def authorize_url() -> Response:
             "state": state
         })
     )
-
 
 @app.post("/integrations/melhorenvio/callback")
 @tracer.capture_method
