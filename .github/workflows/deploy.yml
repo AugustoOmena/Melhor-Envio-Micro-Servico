@@ -2,7 +2,7 @@ name: deploy
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "develop"]
   workflow_dispatch: {}
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
     defaults:
       run:
         working-directory: infra
@@ -37,6 +37,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      - name: Select Terraform workspace
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            export TF_WORKSPACE="prod"
+          else
+            export TF_WORKSPACE="dev"
+          fi
+          echo "TF_WORKSPACE=${TF_WORKSPACE}" >> "${GITHUB_ENV}"
+
       - name: Terraform init
         run: terraform init
 
@@ -45,6 +54,9 @@ jobs:
 
       - name: Terraform validate
         run: terraform validate
+
+      - name: Terraform workspace init
+        run: terraform workspace select "${TF_WORKSPACE}" || terraform workspace new "${TF_WORKSPACE}"
 
       - name: Terraform plan
         env:

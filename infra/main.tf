@@ -19,7 +19,7 @@ resource "null_resource" "build_layer" {
       set -euo pipefail
       mkdir -p "${local.artifacts_dir}"
       mkdir -p "${local.layer_py_dir}"
-      rm -rf "${local.layer_py_dir:?}/"*
+      rm -rf "${local.layer_py_dir}/"*
       python3 -m pip install --upgrade \
         --target "${local.layer_py_dir}" \
         --platform manylinux2014_x86_64 \
