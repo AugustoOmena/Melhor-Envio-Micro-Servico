@@ -140,6 +140,24 @@ resource "aws_apigatewayv2_route" "auth_token" {
   target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
 }
 
+resource "aws_apigatewayv2_route" "me_status" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "GET /integrations/melhorenvio/status"
+  target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
+}
+
+resource "aws_apigatewayv2_route" "me_authorize_url" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "GET /integrations/melhorenvio/authorize-url"
+  target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
+}
+
+resource "aws_apigatewayv2_route" "me_callback" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "POST /integrations/melhorenvio/callback"
+  target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
+}
+
 resource "aws_apigatewayv2_route" "cart_insert" {
   api_id    = aws_apigatewayv2_api.http_api.id
   route_key = "POST /cart"
