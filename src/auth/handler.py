@@ -111,11 +111,15 @@ def authorize_url() -> Response:
     return Response(
         status_code=200,
         content_type="application/json",
-        headers=cors_headers,
+        headers={
+            "Access-Control-Allow-Origin": "*", # Permite que qualquer origem leia (para teste)
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Methods": "GET,OPTIONS"
+        },
         body=json.dumps({
             "authorize_url": url, 
             "state": state
-        }),
+        })
     )
 
 
