@@ -15,7 +15,8 @@ resource "null_resource" "build_layer" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
       set -euo pipefail
       mkdir -p "${local.artifacts_dir}"
       mkdir -p "${local.layer_py_dir}"
@@ -144,4 +145,3 @@ resource "aws_lambda_permission" "apigw_invoke" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
 }
-
