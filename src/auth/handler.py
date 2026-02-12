@@ -81,28 +81,43 @@ def integration_status() -> Response:
 @app.get("/integrations/melhorenvio/authorize-url")
 def authorize_url() -> Response:
     cfg = load_config()
+    
+    # Headers necessários para o navegador não bloquear a resposta (CORS)
+    cors_headers = {
+        "Access-Control-Allow-Origin": "https://dev.augustoomena.com",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Methods": "GET,OPTIONS"
+    }
+
     if not cfg.client_id:
-        return Response(status_code=500, content_type="application/json", body={"message": "missing_client_id"})
+        return Response(status_code=500, content_type="application/json", headers=cors_headers, 
+                        body=json.dumps({"message": "missing_client_id"}))
 
     qs = app.current_event.query_string_parameters or {}
-    redirect_uri = (qs.get("redirect_uri") or cfg.default_redirect_uri or "").strip()
-    if not redirect_uri:
-        return Response(status_code=400, content_type="application/json", body={"message": "missing_redirect_uri"})
+    
+    # FORÇAR a redirect_uri correta caso o front envie a curta
+    # O Melhor Envio exige a URI EXATA cadastrada no painel (com /callback)
+    redirect_uri = "https://dev.augustoomena.com/backoffice/integrations/melhorenvio/callback"
 
     scopes_raw = (qs.get("scopes") or "").strip()
-    scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()] if scopes_raw else list(cfg.default_scopes)
+    # Melhor Envio espera scopes separados por ESPAÇO e não vírgula na URL final
+    scopes_list = [s.strip() for s in scopes_raw.split(",") if s.strip()] if scopes_raw else list(cfg.default_scopes)
+    scopes_string = " ".join(scopes_list)
 
     state = secrets.token_urlsafe(24)
-    url = cfg.build_authorize_url(redirect_uri=redirect_uri, scopes=scopes, state=state)
+    
+    # Gera a URL usando a string de scopes separada por espaços
+    url = cfg.build_authorize_url(redirect_uri=redirect_uri, scopes=scopes_string, state=state)
 
     return Response(
         status_code=200,
         content_type="application/json",
+        headers=cors_headers, # <--- IMPORTANTE: Sem isso o front não lê o JSON
         body=json.dumps({
             "authorize_url": url, 
             "state": state, 
             "redirect_uri": redirect_uri, 
-            "scopes": scopes
+            "scopes": scopes_list
         }),
     )
 
