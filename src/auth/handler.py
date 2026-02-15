@@ -99,10 +99,9 @@ def _handle_authorize_url(event: dict[str, Any]) -> dict[str, Any]:
     qs = event.get("queryStringParameters") or {}
     redirect_uri = (qs.get("redirect_uri") or "").strip() or CALLBACK_REDIRECT_URI
 
+    # Padrão API v2 Sandbox; não usar cfg.default_scopes (ex.: "cart" é inválido no Sandbox).
     scopes_raw = (qs.get("scopes") or "").strip()
-    scopes_list = [s.strip() for s in scopes_raw.split(",") if s.strip()] if scopes_raw else list(cfg.default_scopes)
-    if not scopes_list:
-        scopes_list = DEFAULT_SCOPES
+    scopes_list = [s.strip() for s in scopes_raw.split(",") if s.strip()] if scopes_raw else list(DEFAULT_SCOPES)
 
     state = secrets.token_urlsafe(24)
 
