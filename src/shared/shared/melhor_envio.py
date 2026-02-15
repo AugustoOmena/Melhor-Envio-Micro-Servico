@@ -44,16 +44,16 @@ class MelhorEnvioConfig:
         state: str,
         response_type: str = "code",
     ) -> str:
-        # Melhor Envio SDK uses `scope[]` style params (doseq=True).
+        # Melhor Envio espera scope como string única com escopos separados por espaço (ex: scope=cart%20shipment%20tracking).
+        scope_str = " ".join(scopes) if scopes else ""
         query = urllib.parse.urlencode(
             {
                 "response_type": response_type,
                 "client_id": self.client_id or "",
                 "redirect_uri": redirect_uri,
-                "scope": list(scopes),
+                "scope": scope_str,
                 "state": state,
-            },
-            doseq=True,
+            }
         )
         return f"{self.authorize_url_base}?{query}"
 
