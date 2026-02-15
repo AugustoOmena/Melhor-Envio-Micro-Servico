@@ -108,23 +108,10 @@ resource "aws_apigatewayv2_api" "http_api" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins     = ["https://dev.augustoomena.com"]
+    allow_origins     = ["*"]
     allow_credentials = false
     allow_methods     = ["GET", "POST", "OPTIONS"]
-    allow_headers = [
-      "authorization",
-      "content-type",
-      "accept",
-      "accept-language",
-      "cache-control",
-      "origin",
-      "pragma",
-      "x-requested-with",
-      "sec-fetch-mode",
-      "sec-fetch-site",
-      "sec-fetch-dest",
-      "referer",
-    ]
+    allow_headers     = ["*"]
   }
 }
 
