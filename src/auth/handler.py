@@ -94,15 +94,8 @@ def _handle_status() -> dict[str, Any]:
 def _handle_authorize_url(event: dict[str, Any]) -> dict[str, Any]:
     cfg = load_config()
 
-    # FORÇAR OS ESCOPOS CORRETOS AQUI - REMOVENDO 'cart' DEFINITIVAMENTE
-    # Estes são os escopos padrão da API V2 do Melhor Envio
-    scopes_list = [
-        "shipping-calculate",
-        "shipping-info",
-        "shipping-checkout",
-        "shipping-label",
-        "shipping-orders",
-    ]
+    # Mínimo para validar redirecionamento no Sandbox (escopos estendidos são rejeitados).
+    scopes_list = ["read-general", "shipping-calculate"]
 
     qs = event.get("queryStringParameters") or {}
     redirect_uri = CALLBACK_REDIRECT_URI  # Forçar a URI que funciona
