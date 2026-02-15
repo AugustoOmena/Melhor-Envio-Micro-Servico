@@ -23,6 +23,7 @@ from shared.token_store import MelhorEnvioTokenStore, TokenStoreError
 ADMIN_SUBJECT = "admin"
 CALLBACK_REDIRECT_URI = "https://dev.augustoomena.com/backoffice/integrations/melhorenvio/callback"
 
+# Headers consistentes para evitar bloqueio do navegador
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -32,6 +33,7 @@ CORS_HEADERS = {
 
 
 def _proxy_response(status_code: int, body: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    """Encapsula a resposta no formato exigido pelo API Gateway Proxy Integration."""
     h = {**CORS_HEADERS, **(headers or {})}
     return {"statusCode": status_code, "headers": h, "body": body}
 
@@ -65,8 +67,10 @@ def _handle_status() -> dict[str, Any]:
     store = _build_token_store(http)
     try:
         rec = store.get(subject=ADMIN_SUBJECT, env=cfg.env)
-    except TokenStoreError:
+    except Exception as e:
+        print(f"Error fetching token: {e}")
         return _proxy_response(502, json.dumps({"connected": False, "message": "token_store_error"}))
+    
     return _proxy_response(
         200,
         json.dumps({
@@ -84,7 +88,9 @@ def _handle_authorize_url(event: dict[str, Any]) -> dict[str, Any]:
         return _proxy_response(500, json.dumps({"message": "missing_client_id"}))
 
     qs = event.get("queryStringParameters") or {}
-    redirect_uri = (qs.get("redirect_uri") or cfg.default_redirect_uri or "").strip()
+    
+    # Prioriza o redirect_uri vindo da query, senão usa o padrão fixo de callback
+    redirect_uri = (qs.get("redirect_uri") or "").strip()
     if not redirect_uri:
         redirect_uri = CALLBACK_REDIRECT_URI
 
@@ -94,11 +100,17 @@ def _handle_authorize_url(event: dict[str, Any]) -> dict[str, Any]:
         scopes_list = ["cart", "shipment", "tracking"]
 
     state = secrets.token_urlsafe(24)
+    # Importante: build_authorize_url deve lidar com a lista de scopes convertendo para string com espaços
     url = cfg.build_authorize_url(redirect_uri=redirect_uri, scopes=scopes_list, state=state)
 
     return _proxy_response(
         200,
-        json.dumps({"authorize_url": url, "state": state, "redirect_uri": redirect_uri, "scopes": scopes_list}),
+        json.dumps({
+            "authorize_url": url, 
+            "state": state, 
+            "redirect_uri": redirect_uri, 
+            "scopes": scopes_list
+        }),
     )
 
 
@@ -141,7 +153,8 @@ def _handle_callback(event: dict[str, Any]) -> dict[str, Any]:
             502,
             json.dumps({"message": "upstream_error", "status_code": e.status_code, "details": e.response_body}),
         )
-    except Exception:
+    except Exception as e:
+        print(f"Internal error in callback: {e}")
         return _proxy_response(500, json.dumps({"message": "internal_error"}))
 
 
@@ -161,14 +174,18 @@ def _handle_auth_token(event: dict[str, Any]) -> dict[str, Any]:
             502,
             json.dumps({"message": "upstream_error", "status_code": e.status_code, "details": e.response_body}),
         )
-    except Exception:
+    except Exception as e:
+        print(f"Internal error in auth_token: {e}")
         return _proxy_response(500, json.dumps({"message": "internal_error"}))
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    print(json.dumps(event))
+    # Log para auditoria de paths do API Gateway
+    print(f"EVENT_RECEIVED: {json.dumps(event)}")
 
     path = event.get("rawPath") or event.get("path") or ""
+    
+    # Extração robusta do método HTTP
     request_context = event.get("requestContext") or {}
     http_ctx = request_context.get("http")
     if isinstance(http_ctx, dict):
@@ -176,9 +193,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     else:
         method = event.get("httpMethod", "GET")
 
+    # Resposta imediata para Preflight do Navegador
     if method == "OPTIONS":
         return _proxy_response(204, "")
 
+    # Roteamento manual baseado no path completo enviado pelo Terraform
     if path == "/health" and method == "GET":
         return _handle_health()
     if path == "/integrations/melhorenvio/status" and method == "GET":
@@ -190,4 +209,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     if path == "/auth/token" and method == "POST":
         return _handle_auth_token(event)
 
+    # Fallback caso nenhuma rota coincida
+    print(f"NOT_FOUND: {method} {path}")
     return _proxy_response(404, json.dumps({"message": "not_found", "path": path, "method": method}))
