@@ -112,12 +112,6 @@ def authorize_url() -> Response:
     return Response(
         status_code=200,
         content_type="application/json",
-        headers={
-            # ESTE BLOCO É O QUE FALTA:
-            "Access-Control-Allow-Origin": "https://dev.augustoomena.com",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "GET,OPTIONS"
-        },
         body=json.dumps({
             "authorize_url": url, 
             "state": state
