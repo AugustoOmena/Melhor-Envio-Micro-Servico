@@ -94,8 +94,9 @@ def _handle_status() -> dict[str, Any]:
 def _handle_authorize_url(event: dict[str, Any]) -> dict[str, Any]:
     cfg = load_config()
 
-    # Mínimo para validar redirecionamento no Sandbox (escopos estendidos são rejeitados).
-    scopes_list = ["read-general", "shipping-calculate"]
+    # Escopos exatos da documentação (Fluxo de Autorização). Mínimo para carrinho + cotação.
+    # https://docs.melhorenvio.com.br/reference/fluxo-de-autorizacao
+    scopes_list = ["cart-read", "cart-write", "shipping-calculate", "shipping-checkout"]
 
     qs = event.get("queryStringParameters") or {}
     redirect_uri = CALLBACK_REDIRECT_URI  # Forçar a URI que funciona
