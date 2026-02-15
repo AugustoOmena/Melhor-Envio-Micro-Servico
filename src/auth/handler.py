@@ -93,41 +93,42 @@ def _handle_status() -> dict[str, Any]:
 
 def _handle_authorize_url(event: dict[str, Any]) -> dict[str, Any]:
     cfg = load_config()
-    if not cfg.client_id:
-        return _proxy_response(500, json.dumps({"message": "missing_client_id"}))
+
+    # FORÇAR OS ESCOPOS CORRETOS AQUI - REMOVENDO 'cart' DEFINITIVAMENTE
+    # Estes são os escopos padrão da API V2 do Melhor Envio
+    scopes_list = [
+        "shipping-calculate",
+        "shipping-info",
+        "shipping-checkout",
+        "shipping-label",
+        "shipping-orders",
+    ]
 
     qs = event.get("queryStringParameters") or {}
-    redirect_uri = (qs.get("redirect_uri") or "").strip() or CALLBACK_REDIRECT_URI
-
-    # Padrão API v2 Sandbox; não usar cfg.default_scopes (ex.: "cart" é inválido no Sandbox).
-    scopes_raw = (qs.get("scopes") or "").strip()
-    scopes_list = [s.strip() for s in scopes_raw.split(",") if s.strip()] if scopes_raw else list(DEFAULT_SCOPES)
+    redirect_uri = CALLBACK_REDIRECT_URI  # Forçar a URI que funciona
 
     state = secrets.token_urlsafe(24)
 
-    # Montagem manual da URL: scope como string única com espaços codificados em %20 (não +)
-    base_url = cfg.base_url
-    authorize_base = f"{base_url}/oauth/authorize"
-    scope_str = " ".join(scopes_list)
-    query_params = {
+    # Montagem manual para garantir que não use bibliotecas que troquem %20 por +
+    base_url = "https://sandbox.melhorenvio.com.br/oauth/authorize"
+
+    params = {
         "response_type": "code",
-        "client_id": cfg.client_id or "",
+        "client_id": cfg.client_id,
         "redirect_uri": redirect_uri,
-        "scope": scope_str,
+        "scope": " ".join(scopes_list),  # Espaços aqui
         "state": state,
     }
-    query_string = urllib.parse.urlencode(query_params, quote_via=urllib.parse.quote)
-    url = f"{authorize_base}?{query_string}"
 
-    print(f"AUTHORIZE_URL_GERADA: {url}")
+    # quote_via=urllib.parse.quote força o %20
+    url = f"{base_url}?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}"
 
     return _proxy_response(
         200,
         json.dumps({
             "authorize_url": url,
             "state": state,
-            "redirect_uri": redirect_uri,
-            "scopes": scopes_list,
+            "scopes_enviados": scopes_list,  # Para conferirmos no log
         }),
     )
 
