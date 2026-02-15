@@ -8,7 +8,16 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import urllib.parse
 from typing import Any
+
+DEFAULT_SCOPES = [
+    "shipping-calculate",
+    "shipping-info",
+    "shipping-checkout",
+    "shipping-label",
+    "shipping-orders",
+]
 
 from pydantic import ValidationError
 
@@ -88,28 +97,38 @@ def _handle_authorize_url(event: dict[str, Any]) -> dict[str, Any]:
         return _proxy_response(500, json.dumps({"message": "missing_client_id"}))
 
     qs = event.get("queryStringParameters") or {}
-    
-    # Prioriza o redirect_uri vindo da query, senão usa o padrão fixo de callback
-    redirect_uri = (qs.get("redirect_uri") or "").strip()
-    if not redirect_uri:
-        redirect_uri = CALLBACK_REDIRECT_URI
+    redirect_uri = (qs.get("redirect_uri") or "").strip() or CALLBACK_REDIRECT_URI
 
     scopes_raw = (qs.get("scopes") or "").strip()
     scopes_list = [s.strip() for s in scopes_raw.split(",") if s.strip()] if scopes_raw else list(cfg.default_scopes)
     if not scopes_list:
-        scopes_list = ["cart", "shipment", "tracking"]
+        scopes_list = DEFAULT_SCOPES
 
     state = secrets.token_urlsafe(24)
-    # Importante: build_authorize_url deve lidar com a lista de scopes convertendo para string com espaços
-    url = cfg.build_authorize_url(redirect_uri=redirect_uri, scopes=scopes_list, state=state)
+
+    # Montagem manual da URL: scope como string única com espaços codificados em %20 (não +)
+    base_url = cfg.base_url
+    authorize_base = f"{base_url}/oauth/authorize"
+    scope_str = " ".join(scopes_list)
+    query_params = {
+        "response_type": "code",
+        "client_id": cfg.client_id or "",
+        "redirect_uri": redirect_uri,
+        "scope": scope_str,
+        "state": state,
+    }
+    query_string = urllib.parse.urlencode(query_params, quote_via=urllib.parse.quote)
+    url = f"{authorize_base}?{query_string}"
+
+    print(f"AUTHORIZE_URL_GERADA: {url}")
 
     return _proxy_response(
         200,
         json.dumps({
-            "authorize_url": url, 
-            "state": state, 
-            "redirect_uri": redirect_uri, 
-            "scopes": scopes_list
+            "authorize_url": url,
+            "state": state,
+            "redirect_uri": redirect_uri,
+            "scopes": scopes_list,
         }),
     )
 
