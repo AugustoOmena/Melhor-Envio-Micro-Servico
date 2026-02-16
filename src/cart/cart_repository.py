@@ -9,15 +9,22 @@ from shared.melhor_envio import MelhorEnvioConfig
 
 
 class CartRepository:
-    def __init__(self, http: HttpClient, config: MelhorEnvioConfig) -> None:
+    def __init__(self, http: HttpClient, config: MelhorEnvioConfig, *, user_agent: str | None = None) -> None:
         self._http = http
         self._config = config
+        self._user_agent = user_agent or "MelhorEnvio-Integration (contato@example.com)"
 
     def insert_cart(self, *, authorization: str, payload: Any) -> tuple[int, Any]:
+        headers = {
+            "Authorization": authorization,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": self._user_agent,
+        }
         resp = self._http.request_json(
             "POST",
             self._config.cart_url,
-            headers={"Authorization": authorization, "Accept": "application/json"},
+            headers=headers,
             json_body=payload,
         )
         if resp.status_code >= 400:
