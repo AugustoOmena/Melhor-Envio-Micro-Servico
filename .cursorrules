@@ -1,57 +1,12 @@
-# Project Context
+# Context: E-commerce Serverless (Py3.11, Terraform, Clean Arch)
 
-Project: E-commerce Serverless (AWS Lambda, Python, Terraform)
-Architecture: Clean Architecture / Modular Monolith style
-Role: Senior Backend Engineer & Cloud Architect
+# LAMBDA IMPORTS (Runtime: /var/task/)
+- Internal: Sibling imports only (from service import...)
+- Shared: From layers (from shared.db import...)
+- Local: Prioritize Lambda syntax.
 
-# Critical Behavior Rules (STRICT)
-
-- **NO AUTOMATIC DOCUMENTATION:** Do NOT create `.md`, `.txt`, `.rst`, or summary files after completing a task unless explicitly requested. Focus only on code files (`.py`, `.tf`, `.sh`, `.yml`).
-- **NO "YAPPING":** Be concise. Do not explain basic concepts. Go straight to the solution.
-- **NEVER BREAK EXISTING CODE:** When editing, read the surrounding context. Do not remove existing logic unless necessary for the fix.
-
-# Code Style & Rules
-
-- **Language:** Python 3.11
-- **Typing:** Use Type Hints in ALL function signatures.
-- **Pydantic:** Models must be in `schemas.py`. Use V2 (`model_validate`, `field_validator`).
-- **SQL Security:** NEVER use f-strings for SQL. ALWAYS use parameterized queries.
-
-# AWS Lambda Import Strategy (CRITICAL)
-
-This project deploys Microservices by flattening the folder structure (Terraform copies `src/module/*` to `/var/task/`).
-
-- **Internal Imports:** NEVER import using `src.<module>...`. Use direct sibling imports.
-  - ❌ BAD: `from src.products.service import ProductService`
-  - ✅ GOOD: `from service import ProductService` (Because inside Lambda, they are neighbors).
-- **Shared Imports:** The `src/shared` folder is deployed as a Lambda Layer mapped to `/opt/python/shared`.
-  - ❌ BAD: `from src.shared.database import ...`
-  - ✅ GOOD: `from shared.database import ...`
-- **Local Compatibility:** If the import works in Lambda but breaks locally, instruct the user to run python as a module (`python -m src.products.handler`) or adjust `PYTHONPATH`, but PRIORITIZE Lambda syntax.
-
-# Architecture Standards
-
-- **Controller/Handler:** Receives input, validates schema, calls Service.
-- **Service (`service.py`):** Contains ALL business logic. No SQL here.
-- **Repository (`repository.py`):** Contains ALL database queries. No business logic here.
-- **Schemas (`schemas.py`):** Data Transfer Objects (DTOs) and Validation.
-- **Preservation:** Do not remove existing comments or existing methods unless explicitly asked.
-
-# Documentation & Comments
-
-- **PROFESSIONALISM:** Write comments suitable for a public GitHub repository.
-- **NO ARTIFACTS:** STRICTLY FORBIDDEN to leave "edit markers", conversational notes, or "breadcrumbs" (e.g., avoid: `# I changed this line`, `# Fixed bug here`).
-- **WHY, NOT WHAT:** Comments should explain the _reasoning_ (business logic/complexity) behind the code, not describe what the code is doing.
-- **DOCSTRINGS:** Use Google Style Python Docstrings for public modules, classes, and functions.
-
-# AWS & Terraform
-
-- **Variables:** When writing Terraform, check for existing variables in `variables.tf` before creating new ones.
-- **Observability:** Use `aws_lambda_powertools` for logging, tracing, and metrics.
-- **Lambda:** Optimize for cold starts (avoid heavy global imports inside handlers if possible).
-
-# Testing
-
-- **Framework:** Use `pytest` and `unittest.mock` (or `pytest-mock`).
-- **Isolation:** NEVER try to connect to real databases or AWS services in unit tests. Mock all external calls.
-- **Coverage:** Focus on business logic edge cases in `service.py`.
+# STANDARDS
+- Flow: Handler -> Service (Logic) -> Repository (SQL).
+- Pydantic V2 (schemas.py) | SQL: Parameterized only.
+- Tools: aws_lambda_powertools | Pytest (Mocks only).
+- Comments: None, unless business logic is high complexity.
