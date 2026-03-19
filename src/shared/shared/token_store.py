@@ -104,6 +104,12 @@ class MelhorEnvioTokenStore:
             expires_at=_parse_dt(row.get("expires_at")) or expires_at,
         )
 
+    def delete(self, *, subject: str, env: str) -> bool:
+        """Remove token record. Returns True if a row was deleted."""
+        query = f"?subject=eq.{subject}&env=eq.{env}"
+        self._supabase.delete(self._table, query=query)
+        return True
+
 
 def _parse_dt(value: Any) -> dt.datetime | None:
     if not value:

@@ -68,6 +68,7 @@ def _handle_cart() -> Response:
         http = HttpClient(timeout_seconds=float(os.getenv("HTTP_TIMEOUT_SECONDS", "15")))
 
         auth_header = app.current_event.headers.get("authorization") if app.current_event.headers else None
+        used_stored_token = not bool(auth_header)
 
         if auth_header:
             authorization = auth_header
@@ -103,6 +104,10 @@ def _handle_cart() -> Response:
                     rec = store.upsert_from_token_response(subject=ADMIN_SUBJECT, env=cfg.env, token_response=refreshed)
                 except HttpClientError as refresh_err:
                     metrics.add_metric(name="CartRefreshFailed", unit=MetricUnit.Count, value=1)
+                    try:
+                        store.delete(subject=ADMIN_SUBJECT, env=cfg.env)
+                    except Exception:
+                        pass
                     return Response(
                         status_code=401,
                         content_type="application/json",
@@ -142,6 +147,13 @@ def _handle_cart() -> Response:
             extra={"status_code": e.status_code, "response_body": e.response_body},
         )
         if e.status_code == 401:
+            if used_stored_token:
+                try:
+                    http = HttpClient(timeout_seconds=float(os.getenv("HTTP_TIMEOUT_SECONDS", "15")))
+                    store = _build_token_store(http)
+                    store.delete(subject=ADMIN_SUBJECT, env=load_config().env)
+                except Exception:
+                    pass
             return Response(
                 status_code=401,
                 content_type="application/json",

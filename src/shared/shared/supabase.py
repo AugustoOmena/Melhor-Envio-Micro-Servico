@@ -44,6 +44,10 @@ class SupabaseRestClient:
         url = f"{self._cfg.rest_base_url}/{path.lstrip('/')}{query}"
         return self._request_json("PATCH", url, headers=headers, json_body=json_body)
 
+    def delete(self, path: str, *, query: str = "", headers: Mapping[str, str] | None = None) -> Any:
+        url = f"{self._cfg.rest_base_url}/{path.lstrip('/')}{query}"
+        return self._request_json("DELETE", url, headers=headers)
+
     def _request_json(
         self,
         method: str,

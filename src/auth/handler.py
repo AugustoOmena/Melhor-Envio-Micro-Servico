@@ -35,7 +35,7 @@ CALLBACK_REDIRECT_URI = "https://dev.augustoomena.com/backoffice/integrations/me
 # Headers consistentes para evitar bloqueio do navegador
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "*",
     "Content-Type": "application/json",
 }
@@ -79,7 +79,7 @@ def _handle_status() -> dict[str, Any]:
     except Exception as e:
         print(f"Error fetching token: {e}")
         return _proxy_response(502, json.dumps({"connected": False, "message": "token_store_error"}))
-    
+
     return _proxy_response(
         200,
         json.dumps({
@@ -89,6 +89,26 @@ def _handle_status() -> dict[str, Any]:
             "scope": rec.scope if rec else None,
         }),
     )
+
+
+def _handle_disconnect() -> dict[str, Any]:
+    """Remove stored token so the user can reconnect via OAuth."""
+    cfg = load_config()
+    http = HttpClient(timeout_seconds=float(os.getenv("HTTP_TIMEOUT_SECONDS", "15")))
+    store = _build_token_store(http)
+    try:
+        store.delete(subject=ADMIN_SUBJECT, env=cfg.env)
+        return _proxy_response(
+            200,
+            json.dumps({
+                "disconnected": True,
+                "env": cfg.env,
+                "hint": "Conecte novamente via o fluxo de autorização no backoffice.",
+            }),
+        )
+    except Exception as e:
+        print(f"Error disconnecting token: {e}")
+        return _proxy_response(502, json.dumps({"message": "token_store_error"}))
 
 
 def _handle_authorize_url(event: dict[str, Any]) -> dict[str, Any]:
@@ -219,6 +239,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return _handle_authorize_url(event)
     if path == "/integrations/melhorenvio/callback" and method == "GET":
         return _handle_callback(event)
+    if path == "/integrations/melhorenvio/disconnect" and method == "DELETE":
+        return _handle_disconnect()
     if path == "/auth/token" and method == "POST":
         return _handle_auth_token(event)
 

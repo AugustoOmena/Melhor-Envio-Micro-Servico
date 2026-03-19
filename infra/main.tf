@@ -110,7 +110,7 @@ resource "aws_apigatewayv2_api" "http_api" {
   cors_configuration {
     allow_origins     = ["*"]
     allow_credentials = false
-    allow_methods     = ["GET", "POST", "OPTIONS"]
+    allow_methods     = ["GET", "POST", "DELETE", "OPTIONS"]
     allow_headers     = ["*"]
   }
 }
@@ -156,6 +156,12 @@ resource "aws_apigatewayv2_route" "me_authorize_url" {
 resource "aws_apigatewayv2_route" "me_callback" {
   api_id    = aws_apigatewayv2_api.http_api.id
   route_key = "GET /integrations/melhorenvio/callback"
+  target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
+}
+
+resource "aws_apigatewayv2_route" "me_disconnect" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "DELETE /integrations/melhorenvio/disconnect"
   target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
 }
 
