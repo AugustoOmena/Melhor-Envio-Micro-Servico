@@ -4,12 +4,15 @@ locals {
   auth_zip  = "${local.build_dir}/auth.zip"
   cart_zip  = "${local.build_dir}/cart.zip"
   layer_zip = "${local.build_dir}/shared_layer.zip"
+
+  # Prod keeps legacy prefix so an existing stack can move to MelhorEnvio/prod/terraform.tfstate without rename.
+  resource_prefix = var.stage == "prod" ? var.project_name : "${var.project_name}-${var.stage}"
 }
 
 data "aws_caller_identity" "current" {}
 
 resource "aws_iam_role" "lambda_role" {
-  name = "${var.project_name}-lambda-role"
+  name = "${local.resource_prefix}-lambda-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -31,24 +34,24 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 }
 
 resource "aws_cloudwatch_log_group" "auth" {
-  name              = "/aws/lambda/${var.project_name}-auth"
+  name              = "/aws/lambda/${local.resource_prefix}-auth"
   retention_in_days = 14
 }
 
 resource "aws_cloudwatch_log_group" "cart" {
-  name              = "/aws/lambda/${var.project_name}-cart"
+  name              = "/aws/lambda/${local.resource_prefix}-cart"
   retention_in_days = 14
 }
 
 resource "aws_lambda_layer_version" "shared" {
-  layer_name          = "${var.project_name}-shared"
+  layer_name          = "${local.resource_prefix}-shared"
   filename            = local.layer_zip
   source_code_hash    = filebase64sha256(local.layer_zip)
   compatible_runtimes = ["python3.11"]
 }
 
 resource "aws_lambda_function" "auth" {
-  function_name = "${var.project_name}-auth"
+  function_name = "${local.resource_prefix}-auth"
   role          = aws_iam_role.lambda_role.arn
   runtime       = "python3.11"
   handler       = "handler.lambda_handler"
@@ -76,7 +79,7 @@ resource "aws_lambda_function" "auth" {
 }
 
 resource "aws_lambda_function" "cart" {
-  function_name = "${var.project_name}-cart"
+  function_name = "${local.resource_prefix}-cart"
   role          = aws_iam_role.lambda_role.arn
   runtime       = "python3.11"
   handler       = "handler.lambda_handler"
@@ -104,7 +107,7 @@ resource "aws_lambda_function" "cart" {
 }
 
 resource "aws_apigatewayv2_api" "http_api" {
-  name          = "${var.project_name}-api"
+  name          = "${local.resource_prefix}-api"
   protocol_type = "HTTP"
 
   cors_configuration {

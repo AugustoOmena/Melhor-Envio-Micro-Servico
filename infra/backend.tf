@@ -1,8 +1,6 @@
+# State path is set at init: terraform init -backend-config=backend-config-<dev|prod>.hcl
 terraform {
   backend "s3" {
-    bucket = "augusto-omena-tfstate-dev"
-    key    = "MelhorEnvio/terraform.tfstate"
-    region = "us-east-1"
   }
 }
 

@@ -2,23 +2,24 @@ name: deploy
 
 on:
   push:
-    branches: ["main"]
-  workflow_dispatch: {}
+    branches: [main, dev]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Stack to deploy (uses that environment's secrets)"
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - prod
 
 permissions:
   contents: read
 
 jobs:
-  test-and-deploy:
+  test:
     runs-on: ubuntu-latest
-    env:
-      TF_IN_AUTOMATION: "true"
-      TF_INPUT: "false"
-      TF_VAR_aws_region: us-east-1
-      TF_VAR_melhor_envio_client_id: ${{ secrets.MELHOR_ENVIO_CLIENT_ID }}
-      TF_VAR_melhor_envio_client_secret: ${{ secrets.MELHOR_ENVIO_CLIENT_SECRET }}
-      TF_VAR_supabase_url: ${{ secrets.TF_VAR_SUPABASE_URL }}
-      TF_VAR_supabase_key: ${{ secrets.TF_VAR_SUPABASE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +37,26 @@ jobs:
       - name: Run unit tests
         run: pytest -q
 
+  deploy-dev:
+    needs: test
+    if: github.ref == 'refs/heads/dev' || (github.event_name == 'workflow_dispatch' && inputs.stage == 'dev')
+    runs-on: ubuntu-latest
+    environment: development
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_aws_region: us-east-1
+      TF_VAR_stage: dev
+      TF_VAR_melhor_envio_client_id: ${{ secrets.MELHOR_ENVIO_CLIENT_ID }}
+      TF_VAR_melhor_envio_client_secret: ${{ secrets.MELHOR_ENVIO_CLIENT_SECRET }}
+      TF_VAR_supabase_url: ${{ secrets.TF_VAR_SUPABASE_URL }}
+      TF_VAR_supabase_key: ${{ secrets.TF_VAR_SUPABASE_KEY }}
+      # Environment variable MELHOR_ENVIO_ENV (development): sandbox | production (default sandbox if unset).
+      TF_VAR_melhor_envio_env: ${{ vars.MELHOR_ENVIO_ENV || 'sandbox' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Build Lambda artifacts
         run: ./scripts/build_lambdas.sh
 
@@ -51,11 +72,53 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Terraform init
+      - name: Terraform init (dev state)
         working-directory: infra
-        run: terraform init -upgrade
+        run: terraform init -upgrade -backend-config=backend-config-dev.hcl
 
-      - name: Terraform apply
+      - name: Terraform apply (dev)
         working-directory: infra
         run: terraform apply -auto-approve
 
+  deploy-prod:
+    needs: test
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.stage == 'prod')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_aws_region: us-east-1
+      TF_VAR_stage: prod
+      TF_VAR_melhor_envio_client_id: ${{ secrets.MELHOR_ENVIO_CLIENT_ID }}
+      TF_VAR_melhor_envio_client_secret: ${{ secrets.MELHOR_ENVIO_CLIENT_SECRET }}
+      TF_VAR_supabase_url: ${{ secrets.TF_VAR_SUPABASE_URL }}
+      TF_VAR_supabase_key: ${{ secrets.TF_VAR_SUPABASE_KEY }}
+      # Environment variable MELHOR_ENVIO_ENV (production): use production when using ME API de produção; sandbox enquanto integração for só sandbox.
+      TF_VAR_melhor_envio_env: ${{ vars.MELHOR_ENVIO_ENV || 'sandbox' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Lambda artifacts
+        run: ./scripts/build_lambdas.sh
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform init (prod state)
+        working-directory: infra
+        run: terraform init -upgrade -backend-config=backend-config-prod.hcl
+
+      - name: Terraform apply (prod)
+        working-directory: infra
+        run: terraform apply -auto-approve

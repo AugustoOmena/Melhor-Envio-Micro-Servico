@@ -6,8 +6,18 @@ variable "aws_region" {
 
 variable "project_name" {
   type        = string
-  description = "Project prefix for resource naming."
+  description = "Base name prefix; prod uses this as-is; dev uses \"{project_name}-dev\" to avoid clashes in the same AWS account."
   default     = "melhorenvio-ms"
+}
+
+variable "stage" {
+  type        = string
+  description = "Deployment stage: dev (branch dev) or prod (branch main). Drives resource naming and CI backend config. CI always sets this explicitly."
+  default     = "dev"
+  validation {
+    condition     = contains(["dev", "prod"], var.stage)
+    error_message = "stage must be \"dev\" or \"prod\"."
+  }
 }
 
 variable "melhor_envio_env" {

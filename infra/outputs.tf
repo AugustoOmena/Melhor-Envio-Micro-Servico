@@ -1,3 +1,8 @@
+output "deployment_stage" {
+  description = "dev or prod (matches var.stage)."
+  value       = var.stage
+}
+
 output "api_base_url" {
   description = "Base URL for the HTTP API."
   value       = aws_apigatewayv2_api.http_api.api_endpoint
