@@ -38,6 +38,12 @@ variable "melhor_envio_client_secret" {
   sensitive   = true
 }
 
+variable "melhor_envio_oauth_redirect_uri" {
+  type        = string
+  description = "OAuth redirect_uri (URL da página de callback do backoffice). Deve coincidir com o app no Melhor Envio. Vazio = Lambda usa fallback interno (dev)."
+  default     = ""
+}
+
 variable "supabase_url" {
   type        = string
   description = "Supabase project URL (e.g., https://xxxx.supabase.co)."

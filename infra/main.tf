@@ -7,6 +7,19 @@ locals {
 
   # Prod keeps legacy prefix so an existing stack can move to MelhorEnvio/prod/terraform.tfstate without rename.
   resource_prefix = var.stage == "prod" ? var.project_name : "${var.project_name}-${var.stage}"
+
+  auth_lambda_env_base = {
+    MELHOR_ENVIO_ENV           = var.melhor_envio_env
+    MELHOR_ENVIO_CLIENT_ID     = var.melhor_envio_client_id
+    MELHOR_ENVIO_CLIENT_SECRET = var.melhor_envio_client_secret
+    SUPABASE_URL               = var.supabase_url
+    SUPABASE_KEY               = var.supabase_key
+    HTTP_TIMEOUT_SECONDS       = "15"
+  }
+  auth_lambda_env = merge(
+    local.auth_lambda_env_base,
+    trimspace(var.melhor_envio_oauth_redirect_uri) != "" ? { MELHOR_ENVIO_REDIRECT_URI = var.melhor_envio_oauth_redirect_uri } : {}
+  )
 }
 
 data "aws_caller_identity" "current" {}
@@ -65,14 +78,7 @@ resource "aws_lambda_function" "auth" {
   publish     = true
 
   environment {
-    variables = {
-      MELHOR_ENVIO_ENV           = var.melhor_envio_env
-      MELHOR_ENVIO_CLIENT_ID     = var.melhor_envio_client_id
-      MELHOR_ENVIO_CLIENT_SECRET = var.melhor_envio_client_secret
-      SUPABASE_URL               = var.supabase_url
-      SUPABASE_KEY               = var.supabase_key
-      HTTP_TIMEOUT_SECONDS       = "15"
-    }
+    variables = local.auth_lambda_env
   }
 
   depends_on = [aws_cloudwatch_log_group.auth]

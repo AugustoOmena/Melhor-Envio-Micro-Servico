@@ -53,6 +53,8 @@ jobs:
       TF_VAR_supabase_key: ${{ secrets.TF_VAR_SUPABASE_KEY }}
       # Environment variable MELHOR_ENVIO_ENV (development): sandbox | production (default sandbox if unset).
       TF_VAR_melhor_envio_env: ${{ vars.MELHOR_ENVIO_ENV || 'sandbox' }}
+      # Callback do backoffice (deve bater com o app no Melhor Envio), ex.: https://dev.augustoomena.com/backoffice/integrations/melhorenvio/callback
+      TF_VAR_melhor_envio_oauth_redirect_uri: ${{ vars.MELHOR_ENVIO_OAUTH_REDIRECT_URI }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,6 +98,7 @@ jobs:
       TF_VAR_supabase_key: ${{ secrets.TF_VAR_SUPABASE_KEY }}
       # Environment variable MELHOR_ENVIO_ENV (production): use production when using ME API de produção; sandbox enquanto integração for só sandbox.
       TF_VAR_melhor_envio_env: ${{ vars.MELHOR_ENVIO_ENV || 'sandbox' }}
+      TF_VAR_melhor_envio_oauth_redirect_uri: ${{ vars.MELHOR_ENVIO_OAUTH_REDIRECT_URI }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

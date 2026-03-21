@@ -30,7 +30,14 @@ from shared.supabase import SupabaseConfig, SupabaseRestClient
 from shared.token_store import MelhorEnvioTokenStore, TokenStoreError
 
 ADMIN_SUBJECT = "admin"
-CALLBACK_REDIRECT_URI = "https://dev.augustoomena.com/backoffice/integrations/melhorenvio/callback"
+# Fallback se MELHOR_ENVIO_REDIRECT_URI não estiver na Lambda (use TF + vars por ambiente no GitHub).
+CALLBACK_REDIRECT_FALLBACK = "https://dev.augustoomena.com/backoffice/integrations/melhorenvio/callback"
+
+
+def _oauth_redirect_uri() -> str:
+    """redirect_uri registrado no app Melhor Envio; por stack via env na Lambda."""
+    explicit = (os.getenv("MELHOR_ENVIO_REDIRECT_URI") or "").strip()
+    return explicit or CALLBACK_REDIRECT_FALLBACK
 
 # Headers consistentes para evitar bloqueio do navegador
 CORS_HEADERS = {
@@ -73,7 +80,14 @@ def _handle_health() -> dict[str, Any]:
 def _handle_status() -> dict[str, Any]:
     cfg = load_config()
     http = HttpClient(timeout_seconds=float(os.getenv("HTTP_TIMEOUT_SECONDS", "15")))
-    store = _build_token_store(http)
+    try:
+        store = _build_token_store(http)
+    except RuntimeError as e:
+        print(f"Status: token store config error: {e}")
+        return _proxy_response(
+            502,
+            json.dumps({"connected": False, "message": "misconfigured", "hint": str(e)}),
+        )
     try:
         rec = store.get(subject=ADMIN_SUBJECT, env=cfg.env)
     except Exception as e:
@@ -95,7 +109,14 @@ def _handle_disconnect() -> dict[str, Any]:
     """Remove stored token so the user can reconnect via OAuth."""
     cfg = load_config()
     http = HttpClient(timeout_seconds=float(os.getenv("HTTP_TIMEOUT_SECONDS", "15")))
-    store = _build_token_store(http)
+    try:
+        store = _build_token_store(http)
+    except RuntimeError as e:
+        print(f"Disconnect: token store config error: {e}")
+        return _proxy_response(
+            502,
+            json.dumps({"message": "misconfigured", "hint": str(e)}),
+        )
     try:
         store.delete(subject=ADMIN_SUBJECT, env=cfg.env)
         return _proxy_response(
@@ -119,12 +140,12 @@ def _handle_authorize_url(event: dict[str, Any]) -> dict[str, Any]:
     scopes_list = ["cart-read", "cart-write", "shipping-calculate", "shipping-checkout"]
 
     qs = event.get("queryStringParameters") or {}
-    redirect_uri = CALLBACK_REDIRECT_URI  # Forçar a URI que funciona
+    redirect_uri = _oauth_redirect_uri()
 
     state = secrets.token_urlsafe(24)
 
-    # Montagem manual para garantir que não use bibliotecas que troquem %20 por +
-    base_url = "https://sandbox.melhorenvio.com.br/oauth/authorize"
+    # Base conforme MELHOR_ENVIO_ENV (sandbox vs production).
+    base_url = cfg.authorize_url_base
 
     params = {
         "response_type": "code",
@@ -162,7 +183,7 @@ def _handle_callback(event: dict[str, Any]) -> dict[str, Any]:
         svc = _build_service()
         token = svc.create_token(
             TokenRequest.model_validate(
-                {"grant_type": "authorization_code", "code": code, "redirect_uri": CALLBACK_REDIRECT_URI}
+                {"grant_type": "authorization_code", "code": code, "redirect_uri": _oauth_redirect_uri()}
             )
         )
         store = _build_token_store(http)
@@ -212,12 +233,20 @@ def _handle_auth_token(event: dict[str, Any]) -> dict[str, Any]:
         return _proxy_response(500, json.dumps({"message": "internal_error"}))
 
 
+def _normalize_api_path(raw: str) -> str:
+    """API Gateway HTTP API v2 envia rawPath sem stage; normaliza barra final para bater com as rotas."""
+    p = (raw or "").strip()
+    if len(p) > 1 and p.endswith("/"):
+        p = p[:-1]
+    return p
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Log para auditoria de paths do API Gateway
     print(f"EVENT_RECEIVED: {json.dumps(event)}")
 
-    path = event.get("rawPath") or event.get("path") or ""
-    
+    path = _normalize_api_path(event.get("rawPath") or event.get("path") or "")
+
     # Extração robusta do método HTTP
     request_context = event.get("requestContext") or {}
     http_ctx = request_context.get("http")
