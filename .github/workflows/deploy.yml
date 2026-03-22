@@ -41,7 +41,7 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/dev' || (github.event_name == 'workflow_dispatch' && inputs.stage == 'dev')
     runs-on: ubuntu-latest
-    environment: development
+    environment: dev
     env:
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
