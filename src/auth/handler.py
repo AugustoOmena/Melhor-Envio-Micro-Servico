@@ -241,11 +241,23 @@ def _normalize_api_path(raw: str) -> str:
     return p
 
 
-def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    # Log para auditoria de paths do API Gateway
-    print(f"EVENT_RECEIVED: {json.dumps(event)}")
+def _extract_http_path(event: dict[str, Any]) -> str:
+    """HTTP API v2 usa rawPath; fallbacks evitam 404/500 se o formato do evento variar."""
+    raw = event.get("rawPath") or event.get("path")
+    if raw:
+        return str(raw)
+    rc = event.get("requestContext") or {}
+    http = rc.get("http") if isinstance(rc.get("http"), dict) else {}
+    return str(http.get("path") or "")
 
-    path = _normalize_api_path(event.get("rawPath") or event.get("path") or "")
+
+def _dispatch(event: dict[str, Any]) -> dict[str, Any]:
+    try:
+        print(f"EVENT_RECEIVED: {json.dumps(event, default=str)[:20000]}")
+    except Exception:
+        print("EVENT_RECEIVED: (log skipped — event not JSON-serializable)")
+
+    path = _normalize_api_path(_extract_http_path(event))
 
     # Extração robusta do método HTTP
     request_context = event.get("requestContext") or {}
@@ -276,3 +288,15 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Fallback caso nenhuma rota coincida
     print(f"NOT_FOUND: {method} {path}")
     return _proxy_response(404, json.dumps({"message": "not_found", "path": path, "method": method}))
+
+
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    """Entrypoint da Lambda (handler.lambda_handler no Terraform)."""
+    try:
+        return _dispatch(event)
+    except Exception as e:
+        print(f"AUTH_LAMBDA_UNHANDLED: {type(e).__name__}: {e}")
+        return _proxy_response(
+            500,
+            json.dumps({"message": "internal_error", "error_type": type(e).__name__}),
+        )
