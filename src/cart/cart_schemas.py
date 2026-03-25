@@ -114,6 +114,7 @@ class VolumeItem(BaseModel):
     """Dimensões (cm) e peso (kg) de um volume — espelha o que a cotação envia; só valida/normaliza tipos.
 
     OpenAPI Melhor Envio: height, width, length como integer; weight como number.
+    quantity: número de caixas idênticas neste volume (padrão 1).
     """
 
     model_config = ConfigDict(extra="allow")
@@ -122,6 +123,7 @@ class VolumeItem(BaseModel):
     width: int = Field(..., description="Largura em cm (inteiro, ceil se fracionário)")
     length: int = Field(..., description="Comprimento em cm (inteiro, ceil se fracionário)")
     weight: Decimal = Field(..., description="Peso em kg (Decimal, máx. 3 casas decimais)")
+    quantity: int = Field(default=1, ge=1, description="Quantidade de caixas idênticas")
 
     @field_validator("height", "width", "length", mode="before")
     @classmethod
@@ -174,5 +176,5 @@ class InsertCartPayload(BaseModel):
     from_: AddressBlock | dict[str, Any] = Field(..., alias="from", description="Remetente")
     to: AddressBlock | dict[str, Any] = Field(..., description="Destinatário")
     products: list[ProductItem] | list[dict[str, Any]] = Field(..., description="Produtos na declaração de conteúdo")
-    volumes: list[VolumeItem] = Field(..., description="Volumes (dimensões cm int, peso kg Decimal→float no dump)")
+    volumes: list[VolumeItem] | None = Field(default=None, description="Ignorado — o serviço sempre usa a caixa padrão calculada a partir dos products")
     options: CartOptions | dict[str, Any] | None = Field(default=None, description="Seguro, AR, NF, etc.")
