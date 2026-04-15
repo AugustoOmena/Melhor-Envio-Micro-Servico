@@ -14,10 +14,11 @@ from pydantic import ValidationError
 from cart_repository import CartRepository
 from cart_schemas import InsertCartPayload
 from cart_service import CartService
+from orders_repository import OrdersRepository
 from shared.http import HttpClient, HttpClientError
 from shared.melhor_envio import load_config
 from shared.melhor_envio_oauth import MelhorEnvioOAuthClient
-from shared.supabase import SupabaseConfig, SupabaseRestClient
+from shared.supabase import SupabaseConfig, SupabaseError, SupabaseRestClient
 from shared.token_store import MelhorEnvioTokenStore, TokenStoreError
 
 logger = Logger(service="melhorenvio-cart")
@@ -120,18 +121,61 @@ def _handle_cart() -> Response:
 
             authorization = f"{rec.token_type} {rec.access_token}"
 
-        # Corpo no formato da API: "from" (não from_) via model_dump(by_alias=True)
-        body_for_api = req.model_dump(by_alias=True, exclude_none=False)
+        # Corpo no formato da API: "from" (não from_) via model_dump(by_alias=True); order_id é só persistência local
+        body_for_api = req.model_dump(by_alias=True, exclude_none=False, exclude={"order_id"})
         svc = _build_service()
         status, api_body = svc.insert_freights(authorization=authorization, payload=body_for_api)
 
         cart_item_id = api_body.get("id") if isinstance(api_body, dict) else None
         protocol = api_body.get("protocol") if isinstance(api_body, dict) else None
+        melhor_envio_order_id = str(cart_item_id) if cart_item_id is not None else None
+
+        order_updated: bool | None = None
+        if req.order_id is not None and melhor_envio_order_id is not None:
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if not supabase_url or not supabase_key:
+                metrics.add_metric(name="CartOrderPersistConfigError", unit=MetricUnit.Count, value=1)
+                return Response(
+                    status_code=500,
+                    content_type="application/json",
+                    body={"message": "missing_supabase_config", "hint": "SUPABASE_URL e SUPABASE_KEY são necessários para gravar order_id."},
+                )
+            try:
+                sb_cfg = SupabaseConfig(url=supabase_url, service_role_key=supabase_key)
+                sb = SupabaseRestClient(http=http, cfg=sb_cfg)
+                orders_repo = OrdersRepository(sb)
+                order_updated = orders_repo.set_melhor_envio_order_id(
+                    order_id=req.order_id,
+                    melhor_envio_order_id=melhor_envio_order_id,
+                )
+                if not order_updated:
+                    logger.warning(
+                        "Nenhuma linha em orders atualizada",
+                        extra={"order_id": str(req.order_id), "melhor_envio_order_id": melhor_envio_order_id},
+                    )
+            except SupabaseError as e:
+                metrics.add_metric(name="CartOrderPersistError", unit=MetricUnit.Count, value=1)
+                logger.exception("Falha ao gravar melhor_envio_order_id em orders", extra={"error": str(e)})
+                return Response(
+                    status_code=502,
+                    content_type="application/json",
+                    body={
+                        "message": "order_persist_failed",
+                        "hint": "Carrinho no Melhor Envio foi atualizado; corrija a persistência ou reconcilie manualmente.",
+                        "details": str(e),
+                        "cart_item_id": cart_item_id,
+                        "melhor_envio_order_id": melhor_envio_order_id,
+                    },
+                )
+
         response_body = {
             "success": True,
             "cart_item_id": cart_item_id,
+            "melhor_envio_order_id": melhor_envio_order_id,
             "protocol": protocol,
             "status": api_body.get("status") if isinstance(api_body, dict) else None,
+            "order_updated": order_updated,
             "data": api_body,
         }
         metrics.add_metric(name="CartInsertSuccess", unit=MetricUnit.Count, value=1)

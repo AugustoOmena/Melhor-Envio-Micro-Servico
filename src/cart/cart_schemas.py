@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -178,3 +179,7 @@ class InsertCartPayload(BaseModel):
     products: list[ProductItem] | list[dict[str, Any]] = Field(..., description="Produtos na declaração de conteúdo")
     volumes: list[VolumeItem] | None = Field(default=None, description="Ignorado — o serviço sempre usa a caixa padrão calculada a partir dos products")
     options: CartOptions | dict[str, Any] | None = Field(default=None, description="Seguro, AR, NF, etc.")
+    order_id: UUID | None = Field(
+        default=None,
+        description="Pedido interno (orders.id); se informado, persiste o id retornado pelo Melhor Envio em orders.melhor_envio_order_id",
+    )
