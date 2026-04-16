@@ -50,3 +50,26 @@ def test_set_melhor_envio_order_id_false_when_empty() -> None:
     )
     repo = OrdersRepository(sb)
     assert repo.set_melhor_envio_order_id(order_id=oid, melhor_envio_order_id="me-1") is False
+
+
+def test_get_payer_phone_returns_phone_from_json() -> None:
+    oid = UUID("550e8400-e29b-41d4-a716-446655440000")
+    http = _FakeHttp([[{"payer": {"email": "x@y.com", "phone": "24981021079"}}]])
+    sb = SupabaseRestClient(
+        http=http,
+        cfg=SupabaseConfig(url="https://x.supabase.co", service_role_key="k"),
+    )
+    repo = OrdersRepository(sb)
+    assert repo.get_payer_phone(order_id=oid) == "24981021079"
+    assert http.calls[0]["method"] == "GET"
+
+
+def test_get_payer_phone_returns_none_when_missing() -> None:
+    oid = UUID("550e8400-e29b-41d4-a716-446655440000")
+    http = _FakeHttp([[{"payer": {"email": "x@y.com"}}]])
+    sb = SupabaseRestClient(
+        http=http,
+        cfg=SupabaseConfig(url="https://x.supabase.co", service_role_key="k"),
+    )
+    repo = OrdersRepository(sb)
+    assert repo.get_payer_phone(order_id=oid) is None

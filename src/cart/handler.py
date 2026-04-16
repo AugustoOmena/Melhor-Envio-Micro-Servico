@@ -47,6 +47,28 @@ def _build_token_store(http: HttpClient) -> MelhorEnvioTokenStore:
     return MelhorEnvioTokenStore(sb)
 
 
+def _build_orders_repo(http: HttpClient) -> OrdersRepository:
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+    if not supabase_url or not supabase_key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_KEY env vars.")
+    sb_cfg = SupabaseConfig(url=supabase_url, service_role_key=supabase_key)
+    sb = SupabaseRestClient(http=http, cfg=sb_cfg)
+    return OrdersRepository(sb)
+
+
+def _inject_order_phone_into_destination(*, body_for_api: dict[str, Any], payer_phone: str | None) -> dict[str, Any]:
+    if not payer_phone:
+        return body_for_api
+    to_block = body_for_api.get("to")
+    if not isinstance(to_block, dict):
+        return body_for_api
+    current_phone = to_block.get("phone")
+    if isinstance(current_phone, str) and current_phone.strip():
+        return body_for_api
+    return {**body_for_api, "to": {**to_block, "phone": payer_phone}}
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -123,6 +145,20 @@ def _handle_cart() -> Response:
 
         # Corpo no formato da API: "from" (não from_) via model_dump(by_alias=True); order_id é só persistência local
         body_for_api = req.model_dump(by_alias=True, exclude_none=False, exclude={"order_id"})
+        orders_repo: OrdersRepository | None = None
+        if req.order_id is not None:
+            try:
+                orders_repo = _build_orders_repo(http)
+            except RuntimeError:
+                metrics.add_metric(name="CartOrderPersistConfigError", unit=MetricUnit.Count, value=1)
+                return Response(
+                    status_code=500,
+                    content_type="application/json",
+                    body={"message": "missing_supabase_config", "hint": "SUPABASE_URL e SUPABASE_KEY são necessários para order_id."},
+                )
+            payer_phone = orders_repo.get_payer_phone(order_id=req.order_id)
+            body_for_api = _inject_order_phone_into_destination(body_for_api=body_for_api, payer_phone=payer_phone)
+
         svc = _build_service()
         status, api_body = svc.insert_freights(authorization=authorization, payload=body_for_api)
 
@@ -132,19 +168,9 @@ def _handle_cart() -> Response:
 
         order_updated: bool | None = None
         if req.order_id is not None and melhor_envio_order_id is not None:
-            supabase_url = os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_KEY")
-            if not supabase_url or not supabase_key:
-                metrics.add_metric(name="CartOrderPersistConfigError", unit=MetricUnit.Count, value=1)
-                return Response(
-                    status_code=500,
-                    content_type="application/json",
-                    body={"message": "missing_supabase_config", "hint": "SUPABASE_URL e SUPABASE_KEY são necessários para gravar order_id."},
-                )
             try:
-                sb_cfg = SupabaseConfig(url=supabase_url, service_role_key=supabase_key)
-                sb = SupabaseRestClient(http=http, cfg=sb_cfg)
-                orders_repo = OrdersRepository(sb)
+                if orders_repo is None:
+                    orders_repo = _build_orders_repo(http)
                 order_updated = orders_repo.set_melhor_envio_order_id(
                     order_id=req.order_id,
                     melhor_envio_order_id=melhor_envio_order_id,
