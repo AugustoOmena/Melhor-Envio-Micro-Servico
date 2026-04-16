@@ -2,10 +2,26 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID
 
 from shared.supabase import SupabaseRestClient
+
+
+def _payer_as_dict(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        try:
+            parsed: Any = json.loads(s)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
 
 
 class OrdersRepository:
@@ -17,8 +33,8 @@ class OrdersRepository:
         rows: Any = self._sb.get("orders", query=query)
         if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
             return None
-        payer = rows[0].get("payer")
-        if not isinstance(payer, dict):
+        payer = _payer_as_dict(rows[0].get("payer"))
+        if payer is None:
             return None
         raw_phone = payer.get("phone")
         if raw_phone is None:

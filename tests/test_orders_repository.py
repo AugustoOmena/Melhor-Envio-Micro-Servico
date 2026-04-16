@@ -73,3 +73,15 @@ def test_get_payer_phone_returns_none_when_missing() -> None:
     )
     repo = OrdersRepository(sb)
     assert repo.get_payer_phone(order_id=oid) is None
+
+
+def test_get_payer_phone_parses_payer_json_string() -> None:
+    oid = UUID("550e8400-e29b-41d4-a716-446655440000")
+    payer_json = '{"email":"x@y.com","phone":"24981021079"}'
+    http = _FakeHttp([[{"payer": payer_json}]])
+    sb = SupabaseRestClient(
+        http=http,
+        cfg=SupabaseConfig(url="https://x.supabase.co", service_role_key="k"),
+    )
+    repo = OrdersRepository(sb)
+    assert repo.get_payer_phone(order_id=oid) == "24981021079"

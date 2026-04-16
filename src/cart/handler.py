@@ -57,14 +57,25 @@ def _build_orders_repo(http: HttpClient) -> OrdersRepository:
     return OrdersRepository(sb)
 
 
+def _address_block_to_dict(block: Any) -> dict[str, Any]:
+    if isinstance(block, dict):
+        return dict(block)
+    model_dump = getattr(block, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump(by_alias=True, exclude_none=False)
+        if isinstance(dumped, dict):
+            return dict(dumped)
+    return {}
+
+
 def _inject_order_phone_into_destination(*, body_for_api: dict[str, Any], payer_phone: str | None) -> dict[str, Any]:
     if not payer_phone:
         return body_for_api
-    to_block = body_for_api.get("to")
-    if not isinstance(to_block, dict):
+    to_block = _address_block_to_dict(body_for_api.get("to"))
+    if not to_block:
         return body_for_api
     current_phone = to_block.get("phone")
-    if isinstance(current_phone, str) and current_phone.strip():
+    if current_phone is not None and str(current_phone).strip():
         return body_for_api
     return {**body_for_api, "to": {**to_block, "phone": payer_phone}}
 
@@ -157,6 +168,11 @@ def _handle_cart() -> Response:
                     body={"message": "missing_supabase_config", "hint": "SUPABASE_URL e SUPABASE_KEY são necessários para order_id."},
                 )
             payer_phone = orders_repo.get_payer_phone(order_id=req.order_id)
+            if payer_phone is None:
+                logger.warning(
+                    "order_id sem phone em orders.payer (ou payer não é JSON objeto)",
+                    extra={"order_id": str(req.order_id)},
+                )
             body_for_api = _inject_order_phone_into_destination(body_for_api=body_for_api, payer_phone=payer_phone)
 
         svc = _build_service()
