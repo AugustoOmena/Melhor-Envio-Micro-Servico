@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 from typing import Any
+from urllib.parse import quote
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
 from aws_lambda_powertools.event_handler import APIGatewayHttpResolver, Response
@@ -46,6 +47,36 @@ def _build_token_store(http: HttpClient) -> MelhorEnvioTokenStore:
     return MelhorEnvioTokenStore(sb)
 
 
+def _extract_store_order_id(payload: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
+    """Extrai order_id interno da loja para persistência local (não envia ao Melhor Envio)."""
+    normalized = dict(payload)
+    raw_id = normalized.pop("order_id", None) or normalized.pop("store_order_id", None)
+    if raw_id is None:
+        return None, normalized
+    order_id = str(raw_id).strip()
+    return (order_id or None), normalized
+
+
+def _sync_order_with_cart_item(*, http: HttpClient, order_id: str, cart_item_id: Any) -> None:
+    """Persiste o id do pedido no Melhor Envio para posterior tracking/notificação."""
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+    if not supabase_url or not supabase_key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_KEY env vars.")
+
+    sb_cfg = SupabaseConfig(url=supabase_url, service_role_key=supabase_key)
+    sb = SupabaseRestClient(http=http, cfg=sb_cfg)
+    safe_order_id = quote(order_id, safe="")
+    sb.patch(
+        "orders",
+        query=f"?id=eq.{safe_order_id}",
+        json_body={
+            "melhor_envio_order_id": str(cart_item_id),
+            "updated_at": dt.datetime.now(tz=dt.timezone.utc).isoformat(),
+        },
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -58,7 +89,9 @@ def _handle_cart() -> Response:
     """
     try:
         payload = app.current_event.json_body
-        req = InsertCartPayload.model_validate(payload)
+        payload_dict = payload if isinstance(payload, dict) else {}
+        order_id, payload_for_melhor_envio = _extract_store_order_id(payload_dict)
+        req = InsertCartPayload.model_validate(payload_for_melhor_envio)
     except ValidationError as e:
         metrics.add_metric(name="CartValidationError", unit=MetricUnit.Count, value=1)
         return Response(status_code=400, content_type="application/json", body={"message": "invalid_request", "errors": e.errors()})
@@ -127,6 +160,12 @@ def _handle_cart() -> Response:
 
         cart_item_id = api_body.get("id") if isinstance(api_body, dict) else None
         protocol = api_body.get("protocol") if isinstance(api_body, dict) else None
+        if order_id and cart_item_id:
+            try:
+                _sync_order_with_cart_item(http=http, order_id=order_id, cart_item_id=cart_item_id)
+            except Exception:
+                metrics.add_metric(name="CartOrderSyncError", unit=MetricUnit.Count, value=1)
+                logger.exception("Failed to sync cart item id with orders table", extra={"order_id": order_id})
         response_body = {
             "success": True,
             "cart_item_id": cart_item_id,
