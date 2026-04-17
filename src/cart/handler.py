@@ -5,7 +5,6 @@ from __future__ import annotations
 import datetime as dt
 import os
 from typing import Any
-from urllib.parse import quote
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
 from aws_lambda_powertools.event_handler import APIGatewayHttpResolver, Response
@@ -15,10 +14,11 @@ from pydantic import ValidationError
 from cart_repository import CartRepository
 from cart_schemas import InsertCartPayload
 from cart_service import CartService
+from orders_repository import OrdersRepository
 from shared.http import HttpClient, HttpClientError
 from shared.melhor_envio import load_config
 from shared.melhor_envio_oauth import MelhorEnvioOAuthClient
-from shared.supabase import SupabaseConfig, SupabaseRestClient
+from shared.supabase import SupabaseConfig, SupabaseError, SupabaseRestClient
 from shared.token_store import MelhorEnvioTokenStore, TokenStoreError
 
 logger = Logger(service="melhorenvio-cart")
@@ -46,35 +46,54 @@ def _build_token_store(http: HttpClient) -> MelhorEnvioTokenStore:
     sb = SupabaseRestClient(http=http, cfg=sb_cfg)
     return MelhorEnvioTokenStore(sb)
 
-
-def _extract_store_order_id(payload: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
-    """Extrai order_id interno da loja para persistência local (não envia ao Melhor Envio)."""
-    normalized = dict(payload)
-    raw_id = normalized.pop("order_id", None) or normalized.pop("store_order_id", None)
-    if raw_id is None:
-        return None, normalized
-    order_id = str(raw_id).strip()
-    return (order_id or None), normalized
-
-
-def _sync_order_with_cart_item(*, http: HttpClient, order_id: str, cart_item_id: Any) -> None:
-    """Persiste o id do pedido no Melhor Envio para posterior tracking/notificação."""
+def _build_orders_repo(http: HttpClient) -> OrdersRepository:
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
     if not supabase_url or not supabase_key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_KEY env vars.")
-
     sb_cfg = SupabaseConfig(url=supabase_url, service_role_key=supabase_key)
     sb = SupabaseRestClient(http=http, cfg=sb_cfg)
-    safe_order_id = quote(order_id, safe="")
-    sb.patch(
-        "orders",
-        query=f"?id=eq.{safe_order_id}",
-        json_body={
-            "melhor_envio_order_id": str(cart_item_id),
-            "updated_at": dt.datetime.now(tz=dt.timezone.utc).isoformat(),
-        },
-    )
+    return OrdersRepository(sb)
+
+
+def _address_block_to_dict(block: Any) -> dict[str, Any]:
+    if isinstance(block, dict):
+        return dict(block)
+    model_dump = getattr(block, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump(by_alias=True, exclude_none=False)
+        if isinstance(dumped, dict):
+            return dict(dumped)
+    return {}
+
+
+def _extract_melhor_envio_cart_id(api_body: Any) -> Any:
+    if isinstance(api_body, dict):
+        rid = api_body.get("id")
+        if rid is not None:
+            return rid
+        data = api_body.get("data")
+        if isinstance(data, dict) and data.get("id") is not None:
+            return data.get("id")
+        if isinstance(data, list) and data and isinstance(data[0], dict) and data[0].get("id") is not None:
+            return data[0].get("id")
+    if isinstance(api_body, list) and api_body:
+        first = api_body[0]
+        if isinstance(first, dict) and first.get("id") is not None:
+            return first.get("id")
+    return None
+
+
+def _inject_order_phone_into_destination(*, body_for_api: dict[str, Any], payer_phone: str | None) -> dict[str, Any]:
+    if not payer_phone:
+        return body_for_api
+    to_block = _address_block_to_dict(body_for_api.get("to"))
+    if not to_block:
+        return body_for_api
+    current_phone = to_block.get("phone")
+    if current_phone is not None and str(current_phone).strip():
+        return body_for_api
+    return {**body_for_api, "to": {**to_block, "phone": payer_phone}}
 
 
 @app.get("/health")
@@ -89,9 +108,7 @@ def _handle_cart() -> Response:
     """
     try:
         payload = app.current_event.json_body
-        payload_dict = payload if isinstance(payload, dict) else {}
-        order_id, payload_for_melhor_envio = _extract_store_order_id(payload_dict)
-        req = InsertCartPayload.model_validate(payload_for_melhor_envio)
+        req = InsertCartPayload.model_validate(payload)
     except ValidationError as e:
         metrics.add_metric(name="CartValidationError", unit=MetricUnit.Count, value=1)
         return Response(status_code=400, content_type="application/json", body={"message": "invalid_request", "errors": e.errors()})
@@ -153,24 +170,89 @@ def _handle_cart() -> Response:
 
             authorization = f"{rec.token_type} {rec.access_token}"
 
-        # Corpo no formato da API: "from" (não from_) via model_dump(by_alias=True)
-        body_for_api = req.model_dump(by_alias=True, exclude_none=False)
+        # Corpo no formato da API: "from" (não from_) via model_dump(by_alias=True); order_id é só persistência local
+        body_for_api = req.model_dump(by_alias=True, exclude_none=False, exclude={"order_id"})
+        to_before_phone = _address_block_to_dict(body_for_api.get("to")).get("phone")
+        had_to_phone = bool(to_before_phone is not None and str(to_before_phone).strip())
+
+        orders_repo: OrdersRepository | None = None
+        payer_phone: str | None = None
+        if req.order_id is not None:
+            try:
+                orders_repo = _build_orders_repo(http)
+            except RuntimeError:
+                metrics.add_metric(name="CartOrderPersistConfigError", unit=MetricUnit.Count, value=1)
+                return Response(
+                    status_code=500,
+                    content_type="application/json",
+                    body={"message": "missing_supabase_config", "hint": "SUPABASE_URL e SUPABASE_KEY são necessários para order_id."},
+                )
+            payer_phone = orders_repo.get_payer_phone(order_id=req.order_id)
+            if payer_phone is None:
+                logger.warning(
+                    "order_id sem phone em orders.payer (ou payer não é JSON objeto)",
+                    extra={"order_id": str(req.order_id)},
+                )
+            body_for_api = _inject_order_phone_into_destination(body_for_api=body_for_api, payer_phone=payer_phone)
+
+        to_after = _address_block_to_dict(body_for_api.get("to"))
+        after_phone = to_after.get("phone")
+        payer_phone_injected = bool(
+            payer_phone
+            and (not had_to_phone)
+            and after_phone is not None
+            and str(after_phone).strip() == payer_phone.strip()
+        )
+
         svc = _build_service()
         status, api_body = svc.insert_freights(authorization=authorization, payload=body_for_api)
 
-        cart_item_id = api_body.get("id") if isinstance(api_body, dict) else None
+        cart_item_id = _extract_melhor_envio_cart_id(api_body)
         protocol = api_body.get("protocol") if isinstance(api_body, dict) else None
-        if order_id and cart_item_id:
+        if protocol is None and isinstance(api_body, list) and api_body and isinstance(api_body[0], dict):
+            protocol = api_body[0].get("protocol")
+        melhor_envio_order_id = str(cart_item_id) if cart_item_id is not None else None
+
+        order_updated: bool | None = None
+        if req.order_id is not None and melhor_envio_order_id is not None:
             try:
-                _sync_order_with_cart_item(http=http, order_id=order_id, cart_item_id=cart_item_id)
-            except Exception:
-                metrics.add_metric(name="CartOrderSyncError", unit=MetricUnit.Count, value=1)
-                logger.exception("Failed to sync cart item id with orders table", extra={"order_id": order_id})
+                if orders_repo is None:
+                    orders_repo = _build_orders_repo(http)
+                order_updated = orders_repo.set_melhor_envio_order_id(
+                    order_id=req.order_id,
+                    melhor_envio_order_id=melhor_envio_order_id,
+                )
+                if not order_updated:
+                    logger.warning(
+                        "Nenhuma linha em orders atualizada",
+                        extra={"order_id": str(req.order_id), "melhor_envio_order_id": melhor_envio_order_id},
+                    )
+            except SupabaseError as e:
+                metrics.add_metric(name="CartOrderPersistError", unit=MetricUnit.Count, value=1)
+                logger.exception("Falha ao gravar melhor_envio_order_id em orders", extra={"error": str(e)})
+                return Response(
+                    status_code=502,
+                    content_type="application/json",
+                    body={
+                        "message": "order_persist_failed",
+                        "hint": "Carrinho no Melhor Envio foi atualizado; corrija a persistência ou reconcilie manualmente.",
+                        "details": str(e),
+                        "cart_item_id": cart_item_id,
+                        "melhor_envio_order_id": melhor_envio_order_id,
+                    },
+                )
+
+        response_status = api_body.get("status") if isinstance(api_body, dict) else None
+        if response_status is None and isinstance(api_body, list) and api_body and isinstance(api_body[0], dict):
+            response_status = api_body[0].get("status")
         response_body = {
             "success": True,
             "cart_item_id": cart_item_id,
+            "melhor_envio_order_id": melhor_envio_order_id,
             "protocol": protocol,
-            "status": api_body.get("status") if isinstance(api_body, dict) else None,
+            "status": response_status,
+            "order_updated": order_updated,
+            "payer_phone_injected": payer_phone_injected,
             "data": api_body,
         }
         metrics.add_metric(name="CartInsertSuccess", unit=MetricUnit.Count, value=1)
