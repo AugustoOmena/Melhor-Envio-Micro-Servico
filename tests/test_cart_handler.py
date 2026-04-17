@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from handler import _inject_order_phone_into_destination
+from handler import _extract_melhor_envio_cart_id, _inject_order_phone_into_destination
 
 
 class _FakeTo(BaseModel):
@@ -29,3 +29,15 @@ def test_inject_order_phone_when_to_is_pydantic_model() -> None:
     assert isinstance(out["to"], dict)
     assert out["to"]["phone"] == "24981021079"
     assert out["to"]["name"] == "Destinatario"
+
+
+def test_extract_melhor_envio_cart_id_from_list() -> None:
+    assert _extract_melhor_envio_cart_id([{"id": "abc", "protocol": "p"}]) == "abc"
+
+
+def test_extract_melhor_envio_cart_id_from_nested_data_dict() -> None:
+    assert _extract_melhor_envio_cart_id({"data": {"id": 999}}) == 999
+
+
+def test_extract_melhor_envio_cart_id_from_nested_data_list() -> None:
+    assert _extract_melhor_envio_cart_id({"data": [{"id": "x1"}]}) == "x1"

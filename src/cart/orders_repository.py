@@ -42,6 +42,14 @@ class OrdersRepository:
         phone = str(raw_phone).strip()
         return phone or None
 
+    def _order_has_melhor_envio_id(self, *, order_id: UUID, expected: str) -> bool:
+        query = f"?id=eq.{order_id}&select=melhor_envio_order_id&limit=1"
+        rows: Any = self._sb.get("orders", query=query)
+        if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+            return False
+        got = rows[0].get("melhor_envio_order_id")
+        return str(got) == str(expected)
+
     def set_melhor_envio_order_id(self, *, order_id: UUID, melhor_envio_order_id: str) -> bool:
         query = f"?id=eq.{order_id}"
         rows: Any = self._sb.patch(
@@ -50,4 +58,6 @@ class OrdersRepository:
             json_body={"melhor_envio_order_id": melhor_envio_order_id},
             headers={"Prefer": "return=representation", "Content-Type": "application/json"},
         )
-        return isinstance(rows, list) and len(rows) > 0
+        if isinstance(rows, list) and len(rows) > 0:
+            return True
+        return self._order_has_melhor_envio_id(order_id=order_id, expected=melhor_envio_order_id)

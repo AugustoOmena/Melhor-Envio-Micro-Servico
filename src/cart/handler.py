@@ -68,6 +68,23 @@ def _address_block_to_dict(block: Any) -> dict[str, Any]:
     return {}
 
 
+def _extract_melhor_envio_cart_id(api_body: Any) -> Any:
+    if isinstance(api_body, dict):
+        rid = api_body.get("id")
+        if rid is not None:
+            return rid
+        data = api_body.get("data")
+        if isinstance(data, dict) and data.get("id") is not None:
+            return data.get("id")
+        if isinstance(data, list) and data and isinstance(data[0], dict) and data[0].get("id") is not None:
+            return data[0].get("id")
+    if isinstance(api_body, list) and api_body:
+        first = api_body[0]
+        if isinstance(first, dict) and first.get("id") is not None:
+            return first.get("id")
+    return None
+
+
 def _inject_order_phone_into_destination(*, body_for_api: dict[str, Any], payer_phone: str | None) -> dict[str, Any]:
     if not payer_phone:
         return body_for_api
@@ -156,7 +173,11 @@ def _handle_cart() -> Response:
 
         # Corpo no formato da API: "from" (não from_) via model_dump(by_alias=True); order_id é só persistência local
         body_for_api = req.model_dump(by_alias=True, exclude_none=False, exclude={"order_id"})
+        to_before_phone = _address_block_to_dict(body_for_api.get("to")).get("phone")
+        had_to_phone = bool(to_before_phone is not None and str(to_before_phone).strip())
+
         orders_repo: OrdersRepository | None = None
+        payer_phone: str | None = None
         if req.order_id is not None:
             try:
                 orders_repo = _build_orders_repo(http)
@@ -175,11 +196,22 @@ def _handle_cart() -> Response:
                 )
             body_for_api = _inject_order_phone_into_destination(body_for_api=body_for_api, payer_phone=payer_phone)
 
+        to_after = _address_block_to_dict(body_for_api.get("to"))
+        after_phone = to_after.get("phone")
+        payer_phone_injected = bool(
+            payer_phone
+            and (not had_to_phone)
+            and after_phone is not None
+            and str(after_phone).strip() == payer_phone.strip()
+        )
+
         svc = _build_service()
         status, api_body = svc.insert_freights(authorization=authorization, payload=body_for_api)
 
-        cart_item_id = api_body.get("id") if isinstance(api_body, dict) else None
+        cart_item_id = _extract_melhor_envio_cart_id(api_body)
         protocol = api_body.get("protocol") if isinstance(api_body, dict) else None
+        if protocol is None and isinstance(api_body, list) and api_body and isinstance(api_body[0], dict):
+            protocol = api_body[0].get("protocol")
         melhor_envio_order_id = str(cart_item_id) if cart_item_id is not None else None
 
         order_updated: bool | None = None
@@ -211,13 +243,18 @@ def _handle_cart() -> Response:
                     },
                 )
 
+        response_status = api_body.get("status") if isinstance(api_body, dict) else None
+        if response_status is None and isinstance(api_body, list) and api_body and isinstance(api_body[0], dict):
+            response_status = api_body[0].get("status")
+
         response_body = {
             "success": True,
             "cart_item_id": cart_item_id,
             "melhor_envio_order_id": melhor_envio_order_id,
             "protocol": protocol,
-            "status": api_body.get("status") if isinstance(api_body, dict) else None,
+            "status": response_status,
             "order_updated": order_updated,
+            "payer_phone_injected": payer_phone_injected,
             "data": api_body,
         }
         metrics.add_metric(name="CartInsertSuccess", unit=MetricUnit.Count, value=1)
