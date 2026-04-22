@@ -38,7 +38,7 @@ def _ensure_zero_insurance(payload: dict[str, Any]) -> dict[str, Any]:
     """Garante insurance_value=0 nas options se não foi informado."""
     options = payload.get("options") or {}
     if isinstance(options, dict) and options.get("insurance_value") is None:
-        options = {**options, "insurance_value": 0}
+        options = {**options, "insurance_value": 1}
     return {**payload, "options": options}
 
 
