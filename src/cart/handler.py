@@ -96,6 +96,27 @@ def _inject_order_phone_into_destination(*, body_for_api: dict[str, Any], payer_
     return {**body_for_api, "to": {**to_block, "phone": payer_phone}}
 
 
+_PAC_PHONE_HINTS: dict[str, str] = {
+    "no_order_id": "Inclua to.phone no destinatário ou order_id / orderId do pedido (telefone vem de orders.payer.phone).",
+    "no_order_row": "Não encontramos orders com esse id. Confira o UUID (deve ser orders.id) e se a Lambda aponta para o mesmo Supabase do pedido.",
+    "payer_column_null": "Pedido encontrado, mas orders.payer está vazio. Preencha payer com phone ou envie to.phone.",
+    "payer_not_json_object": "orders.payer não é um objeto JSON. Corrija o registo ou envie to.phone.",
+    "payer_dict_without_phone": "orders.payer não tem phone. Atualize payer.phone ou envie to.phone.",
+    "payer_phone_blank": "orders.payer.phone está vazio. Corrija ou envie to.phone.",
+}
+
+
+def _pac_phone_denial_reason(*, had_order_id: bool, payer_lookup: PayerPhoneLookup | None) -> str:
+    if not had_order_id or payer_lookup is None:
+        return "no_order_id"
+    return payer_lookup.payer_state
+
+
+def _pac_phone_denial_hint(reason: str) -> str:
+    tail = _PAC_PHONE_HINTS.get(reason, "Envie to.phone no destinatário ou corrija order_id / orders.payer.")
+    return f"PAC (serviço 3) exige telefone no destinatário. {tail}"
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -190,29 +211,30 @@ def _handle_cart() -> Response:
                 )
             payer_lookup = orders_repo.lookup_payer_phone(order_id=req.order_id)
             payer_phone = payer_lookup.phone
-            if payer_phone is None:
-                logger.warning(
-                    "order_id sem telefone utilizável em orders.payer",
-                    extra={"order_id": str(req.order_id), "payer_state": payer_lookup.payer_state},
-                )
             body_for_api = _inject_order_phone_into_destination(body_for_api=body_for_api, payer_phone=payer_phone)
 
         if body_for_api.get("service") == 3:
             to_phone = _address_block_to_dict(body_for_api.get("to")).get("phone")
             if not (to_phone and str(to_phone).strip()):
                 metrics.add_metric(name="CartMissingDestinationPhone", unit=MetricUnit.Count, value=1)
+                had_order_id = req.order_id is not None
+                reason = _pac_phone_denial_reason(had_order_id=had_order_id, payer_lookup=payer_lookup)
+                logger.warning(
+                    "cart_pac_destination_phone_missing",
+                    extra={
+                        "reason": reason,
+                        "order_id": str(req.order_id) if req.order_id else None,
+                        "had_to_phone_before_inject": had_to_phone,
+                        "payer_phone_loaded": payer_phone is not None,
+                    },
+                )
                 return Response(
                     status_code=400,
                     content_type="application/json",
                     body={
                         "message": "destination_phone_required",
-                        "hint": "O Melhor Envio exige to.phone no serviço 3 (PAC). Envie to.phone (ou Phone) no destinatário, ou order_id / orderId do pedido para copiar orders.payer.phone quando to.phone estiver vazio.",
-                        "context": {
-                            "had_order_id": req.order_id is not None,
-                            "payer_phone_loaded": payer_phone is not None,
-                            "payer_state": payer_lookup.payer_state if payer_lookup is not None else "order_id_not_used",
-                            "had_to_phone_before_inject": had_to_phone,
-                        },
+                        "reason": reason,
+                        "hint": _pac_phone_denial_hint(reason),
                     },
                 )
 
