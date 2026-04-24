@@ -104,9 +104,25 @@ def test_lookup_payer_phone_payer_column_null() -> None:
     assert got == PayerPhoneLookup(None, "payer_column_null")
 
 
+def test_lookup_payer_phone_by_mp_payment_id() -> None:
+    oid = UUID("550e8400-e29b-41d4-a716-446655440000")
+    body = [{"id": str(oid), "payer": {"phone": "24981021079"}}]
+    http = _FakeHttp([HttpResponse(status_code=200, headers={}, body=body, raw_body=json.dumps(body))])
+    sb = SupabaseRestClient(
+        http=http,
+        cfg=SupabaseConfig(url="https://x.supabase.co", service_role_key="k"),
+    )
+    repo = OrdersRepository(sb)
+    got = repo.lookup_payer_phone(mp_payment_id="12345")
+    assert got is not None
+    assert got.phone == "24981021079"
+    assert got.resolved_order_id == oid
+    assert "mp_payment_id=eq.12345" in http.calls[0]["url"]
+
+
 def test_get_payer_phone_reads_phone_pascal_case_in_payer() -> None:
     oid = UUID("550e8400-e29b-41d4-a716-446655440000")
-    body = [{"payer": {"email": "x@y.com", "Phone": "24981021079"}}]
+    body = [{"id": str(oid), "payer": {"email": "x@y.com", "Phone": "24981021079"}}]
     http = _FakeHttp([HttpResponse(status_code=200, headers={}, body=body, raw_body=json.dumps(body))])
     sb = SupabaseRestClient(
         http=http,
@@ -118,7 +134,7 @@ def test_get_payer_phone_reads_phone_pascal_case_in_payer() -> None:
 
 def test_get_payer_phone_returns_phone_from_json() -> None:
     oid = UUID("550e8400-e29b-41d4-a716-446655440000")
-    body = [{"payer": {"email": "x@y.com", "phone": "24981021079"}}]
+    body = [{"id": str(oid), "payer": {"email": "x@y.com", "phone": "24981021079"}}]
     http = _FakeHttp([HttpResponse(status_code=200, headers={}, body=body, raw_body=json.dumps(body))])
     sb = SupabaseRestClient(
         http=http,

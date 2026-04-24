@@ -182,5 +182,15 @@ class InsertCartPayload(BaseModel):
     order_id: UUID | None = Field(
         default=None,
         validation_alias=AliasChoices("order_id", "orderId"),
-        description="Pedido interno (orders.id); se informado, persiste o id retornado pelo Melhor Envio em orders.melhor_envio_order_id",
+        description="orders.id (UUID). Tem prioridade sobre mp_payment_id e payment_id. Persistência: melhor_envio_order_id na mesma linha.",
+    )
+    mp_payment_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("mp_payment_id", "mpPaymentId"),
+        description="Mercado Pago: orders.mp_payment_id (texto). Alternativa a order_id para ler payer.phone.",
+    )
+    payment_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("payment_id", "paymentId"),
+        description="orders.payment_id (texto). Alternativa a order_id para ler payer.phone.",
     )

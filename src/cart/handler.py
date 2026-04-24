@@ -98,7 +98,7 @@ def _inject_order_phone_into_destination(*, body_for_api: dict[str, Any], payer_
 
 _PAC_PHONE_HINTS: dict[str, str] = {
     "no_order_id": "Inclua to.phone no destinatário ou order_id / orderId do pedido (telefone vem de orders.payer.phone).",
-    "no_order_row": "Não encontramos orders com esse id. Confira o UUID (deve ser orders.id) e se a Lambda aponta para o mesmo Supabase do pedido.",
+    "no_order_row": "Não encontramos pedido com order_id (orders.id), mp_payment_id ou payment_id. Confira os valores e o projeto Supabase da Lambda (sql/01_init_schema.sql).",
     "payer_column_null": "Pedido encontrado, mas orders.payer está vazio. Preencha payer com phone ou envie to.phone.",
     "payer_not_json_object": "orders.payer não é um objeto JSON. Corrija o registo ou envie to.phone.",
     "payer_dict_without_phone": "orders.payer não tem phone. Atualize payer.phone ou envie to.phone.",
@@ -106,8 +106,8 @@ _PAC_PHONE_HINTS: dict[str, str] = {
 }
 
 
-def _pac_phone_denial_reason(*, had_order_id: bool, payer_lookup: PayerPhoneLookup | None) -> str:
-    if not had_order_id or payer_lookup is None:
+def _pac_phone_denial_reason(*, payer_lookup: PayerPhoneLookup | None) -> str:
+    if payer_lookup is None:
         return "no_order_id"
     return payer_lookup.payer_state
 
@@ -191,15 +191,21 @@ def _handle_cart() -> Response:
 
             authorization = f"{rec.token_type} {rec.access_token}"
 
-        # Corpo no formato da API: "from" (não from_) via model_dump(by_alias=True); order_id é só persistência local
-        body_for_api = req.model_dump(by_alias=True, exclude_none=False, exclude={"order_id"})
+        # Corpo no formato da API: "from" (não from_) via model_dump(by_alias=True); campos de pedido não vão ao ME.
+        body_for_api = req.model_dump(
+            by_alias=True,
+            exclude_none=False,
+            exclude={"order_id", "mp_payment_id", "payment_id"},
+        )
         to_before_phone = _address_block_to_dict(body_for_api.get("to")).get("phone")
         had_to_phone = bool(to_before_phone is not None and str(to_before_phone).strip())
 
         orders_repo: OrdersRepository | None = None
         payer_phone: str | None = None
         payer_lookup: PayerPhoneLookup | None = None
-        if req.order_id is not None:
+        mp_pay = (req.mp_payment_id or "").strip() or None
+        pay_id = (req.payment_id or "").strip() or None
+        if req.order_id is not None or mp_pay is not None or pay_id is not None:
             try:
                 orders_repo = _build_orders_repo(http)
             except RuntimeError:
@@ -207,23 +213,32 @@ def _handle_cart() -> Response:
                 return Response(
                     status_code=500,
                     content_type="application/json",
-                    body={"message": "missing_supabase_config", "hint": "SUPABASE_URL e SUPABASE_KEY são necessários para order_id."},
+                    body={
+                        "message": "missing_supabase_config",
+                        "hint": "SUPABASE_URL e SUPABASE_KEY são necessários para order_id, mp_payment_id ou payment_id.",
+                    },
                 )
-            payer_lookup = orders_repo.lookup_payer_phone(order_id=req.order_id)
-            payer_phone = payer_lookup.phone
+            if req.order_id is not None:
+                payer_lookup = orders_repo.lookup_payer_phone(order_id=req.order_id)
+            elif mp_pay is not None:
+                payer_lookup = orders_repo.lookup_payer_phone(mp_payment_id=mp_pay)
+            else:
+                payer_lookup = orders_repo.lookup_payer_phone(payment_id=pay_id)
+            payer_phone = payer_lookup.phone if payer_lookup else None
             body_for_api = _inject_order_phone_into_destination(body_for_api=body_for_api, payer_phone=payer_phone)
 
         if body_for_api.get("service") == 3:
             to_phone = _address_block_to_dict(body_for_api.get("to")).get("phone")
             if not (to_phone and str(to_phone).strip()):
                 metrics.add_metric(name="CartMissingDestinationPhone", unit=MetricUnit.Count, value=1)
-                had_order_id = req.order_id is not None
-                reason = _pac_phone_denial_reason(had_order_id=had_order_id, payer_lookup=payer_lookup)
+                reason = _pac_phone_denial_reason(payer_lookup=payer_lookup)
                 logger.warning(
                     "cart_pac_destination_phone_missing",
                     extra={
                         "reason": reason,
                         "order_id": str(req.order_id) if req.order_id else None,
+                        "used_mp_payment_id": bool(mp_pay),
+                        "used_payment_id": bool(pay_id),
                         "had_to_phone_before_inject": had_to_phone,
                         "payer_phone_loaded": payer_phone is not None,
                     },
@@ -257,18 +272,21 @@ def _handle_cart() -> Response:
         melhor_envio_order_id = str(cart_item_id) if cart_item_id is not None else None
 
         order_updated: bool | None = None
-        if req.order_id is not None and melhor_envio_order_id is not None:
+        persist_order_id = req.order_id
+        if payer_lookup is not None and payer_lookup.resolved_order_id is not None:
+            persist_order_id = payer_lookup.resolved_order_id
+        if persist_order_id is not None and melhor_envio_order_id is not None:
             try:
                 if orders_repo is None:
                     orders_repo = _build_orders_repo(http)
                 order_updated = orders_repo.set_melhor_envio_order_id(
-                    order_id=req.order_id,
+                    order_id=persist_order_id,
                     melhor_envio_order_id=melhor_envio_order_id,
                 )
                 if not order_updated:
                     logger.warning(
                         "Nenhuma linha em orders atualizada",
-                        extra={"order_id": str(req.order_id), "melhor_envio_order_id": melhor_envio_order_id},
+                        extra={"order_id": str(persist_order_id), "melhor_envio_order_id": melhor_envio_order_id},
                     )
             except SupabaseError as e:
                 metrics.add_metric(name="CartOrderPersistError", unit=MetricUnit.Count, value=1)
