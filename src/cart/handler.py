@@ -195,6 +195,19 @@ def _handle_cart() -> Response:
                 )
             body_for_api = _inject_order_phone_into_destination(body_for_api=body_for_api, payer_phone=payer_phone)
 
+        if body_for_api.get("service") == 3:
+            to_phone = _address_block_to_dict(body_for_api.get("to")).get("phone")
+            if not (to_phone and str(to_phone).strip()):
+                metrics.add_metric(name="CartMissingDestinationPhone", unit=MetricUnit.Count, value=1)
+                return Response(
+                    status_code=400,
+                    content_type="application/json",
+                    body={
+                        "message": "destination_phone_required",
+                        "hint": "O Melhor Envio exige to.phone para o serviço 3 (PAC). Envie phone no destinatário ou order_id com telefone em orders.payer.",
+                    },
+                )
+
         to_after = _address_block_to_dict(body_for_api.get("to"))
         after_phone = to_after.get("phone")
         payer_phone_injected = bool(
@@ -284,8 +297,9 @@ def _handle_cart() -> Response:
                     "details": e.response_body,
                 },
             )
+        out_status = e.status_code if e.status_code is not None and 400 <= e.status_code < 500 else 502
         return Response(
-            status_code=502,
+            status_code=out_status,
             content_type="application/json",
             body={"message": "upstream_error", "status_code": e.status_code, "details": e.response_body},
         )

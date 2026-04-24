@@ -104,3 +104,35 @@ def test_non_dict_payload_passed_through() -> None:
     svc, repo = _make_svc()
     svc.insert_freights(authorization="Bearer t", payload="raw_string")
     assert repo.last_payload == "raw_string"
+
+
+def test_service_3_defaults_option_booleans_when_absent() -> None:
+    svc, repo = _make_svc()
+    payload = {
+        "service": 3,
+        "from": {},
+        "to": {},
+        "products": [{"quantity": "1"}],
+        "options": {},
+    }
+    svc.insert_freights(authorization="Bearer t", payload=payload)
+    opt = repo.last_payload["options"]
+    assert opt["receipt"] is False
+    assert opt["own_hand"] is False
+    assert opt["reverse"] is False
+
+
+def test_option_string_booleans_coerced() -> None:
+    svc, repo = _make_svc()
+    payload = {
+        "service": 1,
+        "from": {},
+        "to": {},
+        "products": [{"quantity": "1"}],
+        "options": {"receipt": "false", "own_hand": "true", "reverse": "0"},
+    }
+    svc.insert_freights(authorization="Bearer t", payload=payload)
+    opt = repo.last_payload["options"]
+    assert opt["receipt"] is False
+    assert opt["own_hand"] is True
+    assert opt["reverse"] is False
