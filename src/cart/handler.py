@@ -204,7 +204,12 @@ def _handle_cart() -> Response:
                     content_type="application/json",
                     body={
                         "message": "destination_phone_required",
-                        "hint": "O Melhor Envio exige to.phone para o serviço 3 (PAC). Envie phone no destinatário ou order_id com telefone em orders.payer.",
+                        "hint": "O Melhor Envio exige to.phone no serviço 3 (PAC). Envie to.phone (ou Phone) no destinatário, ou order_id / orderId do pedido para copiar orders.payer.phone quando to.phone estiver vazio.",
+                        "context": {
+                            "had_order_id": req.order_id is not None,
+                            "payer_phone_loaded": payer_phone is not None,
+                            "had_to_phone_before_inject": had_to_phone,
+                        },
                     },
                 )
 

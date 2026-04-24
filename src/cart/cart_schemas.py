@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 def _to_int_cm(value: Any) -> int:
@@ -95,7 +95,7 @@ class AddressBlock(BaseModel):
     company_document: str | None = None
     state_register: str | None = None
     email: str | None = None
-    phone: str | None = None
+    phone: str | None = Field(default=None, validation_alias=AliasChoices("phone", "Phone"))
     complement: str | None = None
     note: str | None = None
     economic_activity_code: str | None = None
@@ -181,5 +181,6 @@ class InsertCartPayload(BaseModel):
     options: CartOptions | None = Field(default=None, description="Seguro, AR, NF, etc.")
     order_id: UUID | None = Field(
         default=None,
+        validation_alias=AliasChoices("order_id", "orderId"),
         description="Pedido interno (orders.id); se informado, persiste o id retornado pelo Melhor Envio em orders.melhor_envio_order_id",
     )

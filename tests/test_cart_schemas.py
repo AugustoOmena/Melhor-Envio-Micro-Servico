@@ -34,3 +34,39 @@ def test_insert_cart_payload_rejects_invalid_option_booleans() -> None:
                 "options": {"receipt": "nao", "own_hand": "talvez", "reverse": "2"},
             }
         )
+
+
+def test_insert_cart_payload_accepts_order_id_camel_case() -> None:
+    oid = UUID("550e8400-e29b-41d4-a716-446655440000")
+    req = InsertCartPayload.model_validate(
+        {
+            "service": 1,
+            "from": {"name": "A", "address": "x", "number": "1", "district": "d", "city": "c", "postal_code": "123", "state_abbr": "SP"},
+            "to": {"name": "B", "address": "y", "number": "2", "district": "d", "city": "c", "postal_code": "456", "state_abbr": "RJ"},
+            "products": [{"name": "P", "quantity": "1", "unitary_value": "10"}],
+            "orderId": str(oid),
+        }
+    )
+    assert req.order_id == oid
+
+
+def test_insert_cart_payload_to_phone_accepts_pascal_case_key() -> None:
+    req = InsertCartPayload.model_validate(
+        {
+            "service": 1,
+            "from": {"name": "A", "address": "x", "number": "1", "district": "d", "city": "c", "postal_code": "123", "state_abbr": "SP"},
+            "to": {
+                "name": "B",
+                "address": "y",
+                "number": "2",
+                "district": "d",
+                "city": "c",
+                "postal_code": "456",
+                "state_abbr": "RJ",
+                "Phone": "11956758638",
+            },
+            "products": [{"name": "P", "quantity": "1", "unitary_value": "10"}],
+        }
+    )
+    body = req.model_dump(by_alias=True, exclude_none=False, exclude={"order_id"})
+    assert body["to"]["phone"] == "11956758638"
