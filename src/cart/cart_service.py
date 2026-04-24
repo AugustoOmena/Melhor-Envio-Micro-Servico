@@ -34,8 +34,8 @@ def _compute_standard_volumes(payload: dict[str, Any]) -> list[dict[str, Any]]:
     }]
 
 
-def _ensure_zero_insurance(payload: dict[str, Any]) -> dict[str, Any]:
-    """Garante insurance_value=0 nas options se não foi informado."""
+def _ensure_minimum_insurance(payload: dict[str, Any]) -> dict[str, Any]:
+    """Garante insurance_value=1 nas options se não foi informado."""
     options = payload.get("options") or {}
     if isinstance(options, dict) and options.get("insurance_value") is None:
         options = {**options, "insurance_value": 1}
@@ -55,5 +55,5 @@ class CartService:
             return payload
         result = dict(payload)
         result["volumes"] = _compute_standard_volumes(result)
-        result = _ensure_zero_insurance(result)
+        result = _ensure_minimum_insurance(result)
         return result

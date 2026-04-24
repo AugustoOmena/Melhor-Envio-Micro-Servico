@@ -174,11 +174,11 @@ class InsertCartPayload(BaseModel):
 
     service: int = Field(..., description="Id do serviço da transportadora")
     agency: int | None = Field(default=None, description="Id da agência (obrigatório para Latam, Azul, Buslog em alguns cenários)")
-    from_: AddressBlock | dict[str, Any] = Field(..., alias="from", description="Remetente")
-    to: AddressBlock | dict[str, Any] = Field(..., description="Destinatário")
-    products: list[ProductItem] | list[dict[str, Any]] = Field(..., description="Produtos na declaração de conteúdo")
+    from_: AddressBlock = Field(..., alias="from", description="Remetente")
+    to: AddressBlock = Field(..., description="Destinatário")
+    products: list[ProductItem] = Field(..., description="Produtos na declaração de conteúdo")
     volumes: list[VolumeItem] | None = Field(default=None, description="Ignorado — o serviço sempre usa a caixa padrão calculada a partir dos products")
-    options: CartOptions | dict[str, Any] | None = Field(default=None, description="Seguro, AR, NF, etc.")
+    options: CartOptions | None = Field(default=None, description="Seguro, AR, NF, etc.")
     order_id: UUID | None = Field(
         default=None,
         description="Pedido interno (orders.id); se informado, persiste o id retornado pelo Melhor Envio em orders.melhor_envio_order_id",

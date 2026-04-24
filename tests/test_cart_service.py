@@ -76,11 +76,11 @@ def test_empty_products_quantity_defaults_to_one() -> None:
     assert repo.last_payload["volumes"][0]["quantity"] == 1
 
 
-def test_insurance_value_set_to_zero_when_absent() -> None:
+def test_insurance_value_set_to_one_when_absent() -> None:
     svc, repo = _make_svc()
     payload = {"service": 1, "from": {}, "to": {}, "products": [{"quantity": "1"}]}
     svc.insert_freights(authorization="Bearer t", payload=payload)
-    assert repo.last_payload["options"]["insurance_value"] == 0
+    assert repo.last_payload["options"]["insurance_value"] == 1
 
 
 def test_insurance_value_preserved_when_already_set() -> None:
