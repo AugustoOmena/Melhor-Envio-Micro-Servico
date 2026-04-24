@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
 from shared.supabase import SupabaseRestClient
+
+
+@dataclass(frozen=True)
+class PayerPhoneLookup:
+    phone: str | None
+    payer_state: str
 
 
 def _payer_as_dict(value: Any) -> dict[str, Any] | None:
@@ -28,19 +35,29 @@ class OrdersRepository:
     def __init__(self, supabase: SupabaseRestClient) -> None:
         self._sb = supabase
 
-    def get_payer_phone(self, *, order_id: UUID) -> str | None:
+    def lookup_payer_phone(self, *, order_id: UUID) -> PayerPhoneLookup:
         query = f"?id=eq.{order_id}&select=payer&limit=1"
         rows: Any = self._sb.get("orders", query=query)
         if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
-            return None
-        payer = _payer_as_dict(rows[0].get("payer"))
+            return PayerPhoneLookup(None, "no_order_row")
+        raw_payer = rows[0].get("payer")
+        if raw_payer is None:
+            return PayerPhoneLookup(None, "payer_column_null")
+        payer = _payer_as_dict(raw_payer)
         if payer is None:
-            return None
+            return PayerPhoneLookup(None, "payer_not_json_object")
         raw_phone = payer.get("phone")
         if raw_phone is None:
-            return None
+            raw_phone = payer.get("Phone")
+        if raw_phone is None:
+            return PayerPhoneLookup(None, "payer_dict_without_phone")
         phone = str(raw_phone).strip()
-        return phone or None
+        if not phone:
+            return PayerPhoneLookup(None, "payer_phone_blank")
+        return PayerPhoneLookup(phone, "phone_ok")
+
+    def get_payer_phone(self, *, order_id: UUID) -> str | None:
+        return self.lookup_payer_phone(order_id=order_id).phone
 
     def _order_has_melhor_envio_id(self, *, order_id: UUID, expected: str) -> bool:
         query = f"?id=eq.{order_id}&select=melhor_envio_order_id&limit=1"

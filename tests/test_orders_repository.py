@@ -4,7 +4,7 @@ import json
 from typing import Any, Mapping
 from uuid import UUID
 
-from orders_repository import OrdersRepository
+from orders_repository import OrdersRepository, PayerPhoneLookup
 from shared.http import HttpResponse
 from shared.supabase import SupabaseConfig, SupabaseRestClient
 
@@ -77,6 +77,43 @@ def test_set_melhor_envio_order_id_false_when_empty() -> None:
     )
     repo = OrdersRepository(sb)
     assert repo.set_melhor_envio_order_id(order_id=oid, melhor_envio_order_id="me-1") is False
+
+
+def test_lookup_payer_phone_no_order_row() -> None:
+    oid = UUID("550e8400-e29b-41d4-a716-446655440000")
+    http = _FakeHttp([HttpResponse(status_code=200, headers={}, body=[], raw_body="[]")])
+    sb = SupabaseRestClient(
+        http=http,
+        cfg=SupabaseConfig(url="https://x.supabase.co", service_role_key="k"),
+    )
+    repo = OrdersRepository(sb)
+    got = repo.lookup_payer_phone(order_id=oid)
+    assert got == PayerPhoneLookup(None, "no_order_row")
+
+
+def test_lookup_payer_phone_payer_column_null() -> None:
+    oid = UUID("550e8400-e29b-41d4-a716-446655440000")
+    body = [{"payer": None}]
+    http = _FakeHttp([HttpResponse(status_code=200, headers={}, body=body, raw_body=json.dumps(body))])
+    sb = SupabaseRestClient(
+        http=http,
+        cfg=SupabaseConfig(url="https://x.supabase.co", service_role_key="k"),
+    )
+    repo = OrdersRepository(sb)
+    got = repo.lookup_payer_phone(order_id=oid)
+    assert got == PayerPhoneLookup(None, "payer_column_null")
+
+
+def test_get_payer_phone_reads_phone_pascal_case_in_payer() -> None:
+    oid = UUID("550e8400-e29b-41d4-a716-446655440000")
+    body = [{"payer": {"email": "x@y.com", "Phone": "24981021079"}}]
+    http = _FakeHttp([HttpResponse(status_code=200, headers={}, body=body, raw_body=json.dumps(body))])
+    sb = SupabaseRestClient(
+        http=http,
+        cfg=SupabaseConfig(url="https://x.supabase.co", service_role_key="k"),
+    )
+    repo = OrdersRepository(sb)
+    assert repo.get_payer_phone(order_id=oid) == "24981021079"
 
 
 def test_get_payer_phone_returns_phone_from_json() -> None:

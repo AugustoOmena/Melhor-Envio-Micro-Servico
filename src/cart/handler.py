@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from cart_repository import CartRepository
 from cart_schemas import InsertCartPayload
 from cart_service import CartService
-from orders_repository import OrdersRepository
+from orders_repository import OrdersRepository, PayerPhoneLookup
 from shared.http import HttpClient, HttpClientError
 from shared.melhor_envio import load_config
 from shared.melhor_envio_oauth import MelhorEnvioOAuthClient
@@ -177,6 +177,7 @@ def _handle_cart() -> Response:
 
         orders_repo: OrdersRepository | None = None
         payer_phone: str | None = None
+        payer_lookup: PayerPhoneLookup | None = None
         if req.order_id is not None:
             try:
                 orders_repo = _build_orders_repo(http)
@@ -187,11 +188,12 @@ def _handle_cart() -> Response:
                     content_type="application/json",
                     body={"message": "missing_supabase_config", "hint": "SUPABASE_URL e SUPABASE_KEY são necessários para order_id."},
                 )
-            payer_phone = orders_repo.get_payer_phone(order_id=req.order_id)
+            payer_lookup = orders_repo.lookup_payer_phone(order_id=req.order_id)
+            payer_phone = payer_lookup.phone
             if payer_phone is None:
                 logger.warning(
-                    "order_id sem phone em orders.payer (ou payer não é JSON objeto)",
-                    extra={"order_id": str(req.order_id)},
+                    "order_id sem telefone utilizável em orders.payer",
+                    extra={"order_id": str(req.order_id), "payer_state": payer_lookup.payer_state},
                 )
             body_for_api = _inject_order_phone_into_destination(body_for_api=body_for_api, payer_phone=payer_phone)
 
@@ -208,6 +210,7 @@ def _handle_cart() -> Response:
                         "context": {
                             "had_order_id": req.order_id is not None,
                             "payer_phone_loaded": payer_phone is not None,
+                            "payer_state": payer_lookup.payer_state if payer_lookup is not None else "order_id_not_used",
                             "had_to_phone_before_inject": had_to_phone,
                         },
                     },
